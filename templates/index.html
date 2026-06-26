@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Messenger Dashboard | Lintcloud Technologies</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-paper-plane brand-logo"></i>
+                <div class="brand-text">
+                    <h2>Bulk Sender</h2>
+                    <span>Lintcloud Tech</span>
+                </div>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#dashboard" class="nav-item active" id="nav-dashboard">
+                    <i class="fa-solid fa-chart-line"></i> Dashboard
+                </a>
+                <a href="#sessions" class="nav-item" id="nav-sessions">
+                    <i class="fa-solid fa-circle-user"></i> Browser Login
+                </a>
+                <a href="#contacts" class="nav-item" id="nav-contacts">
+                    <i class="fa-solid fa-address-book"></i> Contacts
+                </a>
+                <a href="#templates" class="nav-item" id="nav-templates">
+                    <i class="fa-solid fa-pen-to-square"></i> Messages
+                </a>
+                <a href="#settings" class="nav-item" id="nav-settings">
+                    <i class="fa-solid fa-sliders"></i> Settings
+                </a>
+                <a href="#logs" class="nav-item" id="nav-logs">
+                    <i class="fa-solid fa-terminal"></i> Terminal Logs
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <p>&copy; 2026 Lintcloud Technologies</p>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <div class="welcome">
+                    <h1 id="page-title">Dashboard Overview</h1>
+                    <p id="page-subtitle">Real-time stats and control center</p>
+                </div>
+                <div class="system-status">
+                    <span class="status-indicator idle" id="global-status-badge">
+                        <span class="dot"></span> <span id="global-status-text">System Idle</span>
+                    </span>
+                </div>
+            </header>
+
+
+
+            <!-- Dashboard View -->
+            <section id="view-dashboard" class="tab-view active-view">
+                <!-- Dashboard Login Confirmation Bar -->
+                <div class="login-confirm-banner" id="dashboard-login-confirm" style="display:none; margin-bottom: 20px;">
+                    <div class="login-confirm-inner">
+                        <div class="login-confirm-status">
+                            <span class="pulse-dot"></span>
+                            <span id="dashboard-login-confirm-label">Waiting for login in Chrome browser...</span>
+                        </div>
+                        <div class="login-confirm-actions">
+                            <button class="btn btn-confirm-wa" id="btn-dashboard-confirm-whatsapp" style="display:none">
+                                <i class="fa-brands fa-whatsapp"></i> Confirm WhatsApp Login
+                            </button>
+                            <button class="btn btn-confirm-gmail" id="btn-dashboard-confirm-gmail" style="display:none">
+                                <i class="fa-solid fa-envelope"></i> Confirm Gmail Login
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stat Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon purple-gradient">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>Total Contacts</h3>
+                            <p id="stat-total">0</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon green-gradient">
+                            <i class="fa-brands fa-whatsapp"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>WhatsApp Sent</h3>
+                            <p id="stat-whatsapp">0</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon blue-gradient">
+                            <i class="fa-solid fa-envelope"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>Emails Sent</h3>
+                            <p id="stat-email">0</p>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon gold-gradient">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div class="stat-details">
+                            <h3>Average Speed</h3>
+                            <p id="stat-speed">0/min</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Grid -->
+                <div class="dashboard-grid">
+                    <!-- Progress Card -->
+                    <div class="card progress-card">
+                        <div class="card-header">
+                            <h2>Sending Progress</h2>
+                            <div class="card-actions">
+                                <button class="btn btn-primary btn-sm" id="btn-start" title="Start Dispatch">
+                                    <i class="fa-solid fa-play"></i> Start
+                                </button>
+                                <button class="btn btn-danger btn-sm" id="btn-stop" title="Stop Dispatch" disabled>
+                                    <i class="fa-solid fa-stop"></i> Stop
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <!-- Circular or Bar Progress -->
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" id="progress-bar" style="width: 0%;"></div>
+                            </div>
+                            <div class="progress-labels">
+                                <span id="progress-percent">0%</span>
+                                <span id="progress-ratio">0 / 0 sent</span>
+                            </div>
+                            
+                            <!-- Current Action Details -->
+                            <div class="active-contact-card" id="active-contact-panel">
+                                <h3>Currently Dispatching To:</h3>
+                                <div class="contact-detail-row">
+                                    <span class="label">Name:</span>
+                                    <span class="value" id="current-name">-</span>
+                                </div>
+                                <div class="contact-detail-row">
+                                    <span class="label">Phone:</span>
+                                    <span class="value" id="current-phone">-</span>
+                                </div>
+                                <div class="contact-detail-row">
+                                    <span class="label">Email:</span>
+                                    <span class="value" id="current-email">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mode and Launchers -->
+                    <div class="card quick-actions-card">
+                        <div class="card-header">
+                            <h2>Start Sending Batch</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label for="messaging-mode">Select Messaging Service</label>
+                                <select id="messaging-mode" class="form-control">
+                                    <option value="1">WhatsApp Only</option>
+                                    <option value="2">Email Only</option>
+                                    <option value="3">Both WhatsApp + Email</option>
+                                </select>
+                            </div>
+                            <div class="quick-status-section">
+                                <h3>Browser Status:</h3>
+                                <div class="browser-status">
+                                    <div class="status-item">
+                                        <span>WhatsApp Web:</span>
+                                        <span class="badge badge-danger" id="status-whatsapp-browser"><i class="fa-solid fa-times"></i> Offline</span>
+                                    </div>
+                                    <div class="status-item">
+                                        <span>Gmail Inbox:</span>
+                                        <span class="badge badge-danger" id="status-gmail-browser"><i class="fa-solid fa-times"></i> Offline</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-success btn-full" id="btn-dispatch-launch">
+                                <i class="fa-solid fa-paper-plane"></i> Launch Sending Process
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Contacts View -->
+            <section id="view-contacts" class="tab-view">
+                <!-- Contacts Toolbar -->
+                <div class="contacts-toolbar">
+                    <div class="contacts-search-wrap">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="contacts-search" class="form-control contacts-search-input" placeholder="Search by name, phone or email...">
+                    </div>
+                    <div class="contacts-actions">
+                        <button class="btn btn-secondary" id="btn-refresh-contacts" title="Reload contacts from file">
+                            <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                        </button>
+                        <span class="contacts-count-badge" id="contacts-count-badge">0 contacts</span>
+                    </div>
+                </div>
+
+                <!-- Contacts Table Card -->
+                <div class="card contacts-table-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-table-list" style="margin-right:8px;color:var(--accent-purple)"></i>Contact List</h2>
+                        <div class="contacts-header-meta" id="contacts-header-meta">Loading...</div>
+                    </div>
+                    <div class="card-body" style="padding:0;overflow:hidden;">
+                        <div class="contacts-table-wrap" id="contacts-table-wrap">
+                            <div class="contacts-loading" id="contacts-loading">
+                                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                                <p>Loading contacts...</p>
+                            </div>
+                            <table class="contacts-table" id="contacts-table" style="display:none">
+                                <thead id="contacts-thead"></thead>
+                                <tbody id="contacts-tbody"></tbody>
+                            </table>
+                            <div class="contacts-empty" id="contacts-empty" style="display:none">
+                                <i class="fa-solid fa-inbox"></i>
+                                <p>No contacts found. Upload an Excel sheet in Settings.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sessions View -->
+            <section id="view-sessions" class="tab-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Browser Session Configuration</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="description">Before starting the messaging process, ensure that you have initialized the browser sessions and logged in to your respective accounts. Sessions will persist after initial login.</p>
+                        
+                        <div class="sessions-grid">
+                            <div class="session-box">
+                                <div class="session-header">
+                                    <i class="fa-brands fa-whatsapp whatsapp-icon"></i>
+                                    <h3>WhatsApp Login</h3>
+                                </div>
+                                <p>Opens Google Chrome to load WhatsApp Web. Scan the QR code using your phone to authorize this application. Session cookies are automatically stored.</p>
+                                <div class="session-actions">
+                                    <button class="btn btn-whatsapp" id="btn-login-whatsapp">
+                                        <i class="fa-solid fa-qrcode"></i> Launch WhatsApp Chrome
+                                    </button>
+                                    <span class="session-status offline" id="session-status-wa">Disconnected</span>
+                                </div>
+                            </div>
+
+                            <div class="session-box">
+                                <div class="session-header">
+                                    <i class="fa-solid fa-envelope gmail-icon"></i>
+                                    <h3>Gmail Web Login</h3>
+                                </div>
+                                <p>Opens Google Chrome and navigates to Gmail. Simply log in with your email address and regular password. Session logs are retained to bypass login steps later.</p>
+                                <div class="session-actions">
+                                    <button class="btn btn-gmail" id="btn-login-gmail">
+                                        <i class="fa-solid fa-right-to-bracket"></i> Launch Gmail Chrome
+                                    </button>
+                                    <span class="session-status offline" id="session-status-gm">Disconnected</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Templates View -->
+            <section id="view-templates" class="tab-view">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Configure Message Templates</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="description">You can dynamically customize the text templates sent to participants. Use the variable <code>{Name}</code> to personalize greetings dynamically for each recipient.</p>
+                        
+                        <div class="templates-composer-grid">
+                            <div class="composer-box">
+                                <h3><i class="fa-brands fa-whatsapp text-success"></i> WhatsApp Text Message</h3>
+                                <textarea id="txt-wa-template" class="form-control text-area-large" placeholder="Write WhatsApp message body..."></textarea>
+                            </div>
+                            
+                            <div class="composer-box">
+                                <h3><i class="fa-solid fa-envelope text-primary"></i> Gmail Message Body</h3>
+                                <textarea id="txt-email-template" class="form-control text-area-large" placeholder="Write Gmail body..."></textarea>
+                            </div>
+                        </div>
+                        <div class="actions-panel">
+                            <button class="btn btn-primary" id="btn-save-templates">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Message Templates
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="view-settings" class="tab-view">
+                <div class="settings-grid">
+                    <!-- Files Config Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>List and Attachment Upload</h2>
+                        </div>
+                        <div class="card-body">
+                            <!-- Contact File Upload -->
+                            <div class="upload-section">
+                                <h3>Recipient Excel List (.xlsx)</h3>
+                                <div class="drop-zone" id="drop-zone-contacts">
+                                    <i class="fa-solid fa-file-excel drop-icon"></i>
+                                    <p>Drag & Drop contacts Excel sheet here or <span>click to browse</span></p>
+                                    <input type="file" id="input-contacts-file" accept=".xlsx, .xls" class="hidden-input">
+                                </div>
+                                <div class="file-info" id="contacts-file-info">
+                                    <span>Active File: <code>contacts.xlsx</code></span>
+                                </div>
+                            </div>
+
+                            <!-- Attachment PDF Upload -->
+                            <div class="upload-section">
+                                <h3>Brochure PDF Attachment (.pdf)</h3>
+                                <div class="drop-zone" id="drop-zone-attachment">
+                                    <i class="fa-solid fa-file-pdf drop-icon"></i>
+                                    <p>Drag & Drop brochure PDF here or <span>click to browse</span></p>
+                                    <input type="file" id="input-attachment-file" accept=".pdf" class="hidden-input">
+                                </div>
+                                <div class="file-info" id="attachment-file-info">
+                                    <span>Active File: <code id="active-pdf-name">None</code></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Config properties Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>System Parameters</h2>
+                        </div>
+                        <div class="card-body">
+                            <form id="settings-form">
+                                <div class="form-row">
+                                    <div class="form-group col-6">
+                                        <label for="whatsapp-sender-num">Your Whatsapp Number</label>
+                                        <input type="text" id="whatsapp-sender-num" class="form-control" placeholder="e.g. 9993523379">
+                                    </div>
+                                    <div class="form-group col-6">
+                                        <label for="gmail-sender-id">Your Gmail ID</label>
+                                        <input type="email" id="gmail-sender-id" class="form-control" placeholder="e.g. name@gmail.com">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="toggle-control">
+                                        <label for="toggle-attachment">Send with Brochure Attachment</label>
+                                        <input type="checkbox" id="toggle-attachment" class="toggle-checkbox">
+                                    </div>
+                                    <p class="help-text">Disable this if you want to send text-only campaigns without uploading any attachments.</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="toggle-control">
+                                        <label for="toggle-ml">Enable ML Optimization</label>
+                                        <input type="checkbox" id="toggle-ml" class="toggle-checkbox">
+                                    </div>
+                                    <p class="help-text">Utilizes adaptive delays between campaigns to improve delivery and avoid server bans.</p>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group col-6">
+                                        <label for="min-delay">Min Delay (sec)</label>
+                                        <input type="number" id="min-delay" class="form-control" value="60">
+                                    </div>
+                                    <div class="form-group col-6">
+                                        <label for="max-delay">Max Delay (sec)</label>
+                                        <input type="number" id="max-delay" class="form-control" value="60">
+                                    </div>
+                                </div>
+
+                                <button type="button" class="btn btn-primary" id="btn-save-settings">
+                                    <i class="fa-solid fa-check"></i> Apply Settings
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Logs View -->
+            <section id="view-logs" class="tab-view">
+                <!-- Logs Login Confirmation Bar -->
+                <div class="login-confirm-banner" id="logs-login-confirm" style="display:none; margin-bottom: 20px;">
+                    <div class="login-confirm-inner">
+                        <div class="login-confirm-status">
+                            <span class="pulse-dot"></span>
+                            <span id="logs-login-confirm-label">Waiting for login in Chrome browser...</span>
+                        </div>
+                        <div class="login-confirm-actions">
+                            <button class="btn btn-confirm-wa" id="btn-logs-confirm-whatsapp" style="display:none">
+                                <i class="fa-brands fa-whatsapp"></i> Confirm WhatsApp Login
+                            </button>
+                            <button class="btn btn-confirm-gmail" id="btn-logs-confirm-gmail" style="display:none">
+                                <i class="fa-solid fa-envelope"></i> Confirm Gmail Login
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card logs-card">
+                    <div class="card-header">
+                        <h2>Application Output Logs</h2>
+                        <button class="btn btn-secondary btn-sm" id="btn-clear-logs">
+                            <i class="fa-solid fa-trash-can"></i> Clear Terminal
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="terminal-console" id="log-terminal">
+                            <div class="log-line system">[SYSTEM] Console logger initialized. Logs from Selenium and Bulk Messenger will stream here...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    
+    <!-- Application Logic -->
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

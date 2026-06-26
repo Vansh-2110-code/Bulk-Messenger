@@ -1,0 +1,23 @@
+{
+    "account_type": "google_workspace",
+    "rate_limit_mode": "adaptive",
+    "min_wait_seconds": 60,
+    "max_wait_seconds": 60,
+    "daily_limit": 2000,
+    "use_ml_optimization": true,
+    "parallel_composition": true,
+    "max_parallel_browsers": 1,
+    "enable_analytics": true,
+    "enable_contact_prioritization": false,
+    "enable_engagement_prediction": true,
+    "enable_dynamic_action_delays": true,
+    "target_send_time_seconds": 35.0,
+    "auto_retry_on_failure": true,
+    "max_retries": 3,
+    "save_progress": true,
+    "log_level": "INFO",
+    "send_with_attachment": true,
+    "attachment_path": "your_attachment.pdf",
+    "whatsapp_sender": "your_whatsapp_number_with_country_code",
+    "gmail_sender": "your_gmail_address"
+}
