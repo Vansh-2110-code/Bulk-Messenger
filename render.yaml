@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: bulk-messenger
+    runtime: docker
+    plan: starter # Starter plan (1 GB RAM minimum recommended for headless Chrome)
+    envVars:
+      - key: PORT
+        value: 5000
+    disk:
+      name: chrome-profiles-data
+      mountPath: /app/chrome_profiles
+      sizeGB: 1
