@@ -1,4 +1,4 @@
-# Bulk Messaging System - Lintcloud Technologies
+# Bulk Messaging System 
 
 Production-ready Python script for sending bulk messages via WhatsApp and Gmail.
 
