@@ -4,8 +4,9 @@ import json
 import threading
 import time
 from datetime import datetime
+from functools import wraps
 import pandas as pd
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file, session, redirect, url_for
 from werkzeug.utils import secure_filename
 
 # Add current path to sys.path so we can import local modules
@@ -13,14 +14,17 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 import bulk_messenger
 import actions
+from db import db_manager
 
 # Create the flask app
 app = Flask(__name__, template_folder='templates', static_folder='static')
+app.secret_key = os.environ.get('SECRET_KEY', 'bulk_messenger_secret_key_2026')
 app.config['UPLOAD_FOLDER'] = os.getcwd()
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload
 
 # Global State
 state = {
+    'current_user': None,
     'whatsapp_driver': None,
     'gmail_driver': None,
     'sending_thread': None,
@@ -94,11 +98,22 @@ def update_progress(p_dict):
 
 def run_sender_thread(choice):
     global state
+    
+    use_whatsapp = choice in ['1', '3']
+    use_email = choice in ['2', '3']
+    
     with lock:
         state['is_sending'] = True
         state['cancel_flag'] = False
         state['progress']['status'] = 'sending'
         state['progress']['current'] = 0
+        
+        # Preserve existing active drivers for session reuse
+        if use_whatsapp and state['whatsapp_driver'] and not actions.is_browser_alive(state['whatsapp_driver']):
+            state['whatsapp_driver'] = None
+            
+        if use_email and state['gmail_driver'] and not actions.is_browser_alive(state['gmail_driver']):
+            state['gmail_driver'] = None
         
     print(f"🎬 Starting background sender process (Mode: {choice})...")
     
@@ -143,7 +158,8 @@ def run_sender_thread(choice):
             on_waiting_whatsapp=on_waiting_wa,
             on_finished_whatsapp=on_finished_wa,
             on_waiting_gmail=on_waiting_gm,
-            on_finished_gmail=on_finished_gm
+            on_finished_gmail=on_finished_gm,
+            username=state.get('current_user')
         )
         
         with lock:
@@ -165,9 +181,69 @@ def run_sender_thread(choice):
             state['sending_thread'] = None
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Authentication required'}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        data = request.json or {}
+        username = data.get('username', '')
+        password = data.get('password', '')
+        success, authenticated_user = db_manager.authenticate_user(username, password)
+        if success:
+            session['username'] = authenticated_user
+            return jsonify({'success': True, 'redirect': '/'})
+        return jsonify({'success': False, 'message': 'Invalid username or password.'}), 401
+    return render_template('login.html')
+
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        data = request.json or {}
+        username = data.get('username', '')
+        password = data.get('password', '')
+        success, message = db_manager.create_user(username, password)
+        if success:
+            return jsonify({'success': True, 'message': message, 'redirect': '/login'})
+        return jsonify({'success': False, 'message': message}), 400
+    return render_template('signup.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+@app.route('/api/user_info', methods=['GET'])
+def get_user_info():
+    if 'username' in session:
+        return jsonify({'logged_in': True, 'username': session['username']})
+    return jsonify({'logged_in': False})
+
+
+@app.route('/api/mail_history', methods=['GET'])
+@login_required
+def get_mail_history():
+    username = session.get('username')
+    emails = db_manager.get_user_sent_emails(username=username)
+    return jsonify({'success': True, 'emails': emails})
 
 
 @app.route('/api/status', methods=['GET'])
@@ -276,6 +352,7 @@ def confirm_login(service):
 
 
 @app.route('/api/start', methods=['POST'])
+@login_required
 def start_sending():
     global state
     
@@ -289,6 +366,7 @@ def start_sending():
         if state['is_sending']:
             return jsonify({'error': 'Sending is already running!'}), 400
             
+        state['current_user'] = session.get('username')
         state['cancel_flag'] = False
         state['sending_thread'] = threading.Thread(target=run_sender_thread, args=(choice,))
         state['sending_thread'].start()
@@ -324,24 +402,18 @@ def handle_settings():
         excel_files = [f for f in os.listdir('.') if f.endswith('.xlsx') or f.endswith('.xls')]
         
         # Read message templates
-        wa_template = ""
-        email_template = ""
-        
-        # Try loading message template
-        if os.path.exists('actions.py'):
-            with open('actions.py', 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-                
-            # Extract WhatsApp message body string
+        wa_template = cfg.get('whatsapp_template', '')
+        if not wa_template and os.path.exists('actions.py'):
             try:
                 import actions as act_mod
                 wa_template = act_mod.get_message_body("{Name}")
             except:
                 wa_template = "Greetings!"
                 
-            # Extract email message body string
+        email_template = cfg.get('email_template', '')
+        if not email_template and os.path.exists('actions.py'):
             try:
-                # check if get_email_body_text exists in actions
+                import actions as act_mod
                 if hasattr(act_mod, 'get_email_body_text'):
                     email_template = act_mod.get_email_body_text("{Name}")
                 else:
@@ -349,12 +421,25 @@ def handle_settings():
             except:
                 email_template = "Greetings!"
                 
+        email_subject = cfg.get('email_subject', '')
+        if not email_subject and os.path.exists('actions.py'):
+            try:
+                import actions as act_mod
+                if hasattr(act_mod, 'get_email_subject'):
+                    email_subject = act_mod.get_email_subject("{Name}")
+            except:
+                email_subject = ""
+                
+        email_cc = cfg.get('email_cc', '')
+                
         return jsonify({
             'config': cfg,
             'pdfs': pdf_files,
             'excels': excel_files,
             'whatsapp_template': wa_template,
-            'email_template': email_template
+            'email_template': email_template,
+            'email_subject': email_subject,
+            'email_cc': email_cc
         })
         
     elif request.method == 'POST':
@@ -366,26 +451,33 @@ def handle_settings():
             with open(config_path, 'r') as f:
                 cfg = json.load(f)
                 
-        # Update config properties
-        cfg['send_with_attachment'] = data.get('send_with_attachment', True)
-        cfg['attachment_path'] = data.get('attachment_path', 'timing.pdf')
-        cfg['whatsapp_sender'] = data.get('whatsapp_sender', '')
-        cfg['gmail_sender'] = data.get('gmail_sender', '')
-        cfg['use_ml_optimization'] = data.get('use_ml_optimization', True)
-        cfg['min_wait_seconds'] = int(data.get('min_wait_seconds', 60))
-        cfg['max_wait_seconds'] = int(data.get('max_wait_seconds', 60))
-        
+        # Update config properties dynamically
+        if 'send_with_attachment' in data:
+            cfg['send_with_attachment'] = data['send_with_attachment']
+        if 'attachment_path' in data:
+            cfg['attachment_path'] = data['attachment_path']
+        if 'whatsapp_sender' in data:
+            cfg['whatsapp_sender'] = data['whatsapp_sender']
+        if 'gmail_sender' in data:
+            cfg['gmail_sender'] = data['gmail_sender']
+        if 'use_ml_optimization' in data:
+            cfg['use_ml_optimization'] = data['use_ml_optimization']
+        if 'min_wait_seconds' in data:
+            cfg['min_wait_seconds'] = int(data['min_wait_seconds'])
+        if 'max_wait_seconds' in data:
+            cfg['max_wait_seconds'] = int(data['max_wait_seconds'])
+        if 'whatsapp_template' in data:
+            cfg['whatsapp_template'] = data['whatsapp_template']
+        if 'email_template' in data:
+            cfg['email_template'] = data['email_template']
+        if 'email_subject' in data:
+            cfg['email_subject'] = data['email_subject']
+        if 'email_cc' in data:
+            cfg['email_cc'] = data['email_cc']
+            
         # Write back to config.json
         with open(config_path, 'w') as f:
             json.dump(cfg, f, indent=4)
-            
-        # Update templates in actions.py if modified
-        wa_template = data.get('whatsapp_template')
-        email_template = data.get('email_template')
-        
-        if wa_template or email_template:
-            # Modify actions.py directly (very carefully)
-            modify_actions_templates(wa_template, email_template)
             
         return jsonify({'success': 'Settings updated successfully'})
 
@@ -481,6 +573,65 @@ def get_contacts():
         })
     except Exception as e:
         return jsonify({'contacts': [], 'columns': [], 'total': 0, 'error': str(e)}), 500
+
+
+@app.route('/api/contacts', methods=['POST'])
+def add_contact():
+    """Add a new contact to contacts.xlsx."""
+    excel_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
+    data = request.json or {}
+    try:
+        if os.path.exists(excel_path):
+            df = pd.read_excel(excel_path)
+            df = df.fillna('')
+        else:
+            df = pd.DataFrame(columns=['Name', 'Email', 'Phone'])
+        
+        # Build new row mapping keys to case insensitive values
+        new_row = {}
+        for col in df.columns:
+            new_row[col] = data.get(col, data.get(col.lower(), ''))
+            
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_excel(excel_path, index=False)
+        print(f"✅ Added contact: {new_row.get('Name', 'Unknown')} to contacts.xlsx")
+        return jsonify({'success': True, 'total': len(df)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contacts/<int:row_index>', methods=['PUT'])
+def update_contact(row_index):
+    """Update an existing contact row by its 0-based index in contacts.xlsx."""
+    excel_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
+    if not os.path.exists(excel_path):
+        return jsonify({'error': 'contacts.xlsx not found'}), 404
+    data = request.json or {}
+    try:
+        df = pd.read_excel(excel_path)
+        if row_index < 0 or row_index >= len(df):
+            return jsonify({'error': 'Row index out of range'}), 400
+        
+        for col in df.columns:
+            if col in data:
+                df.at[row_index, col] = data[col]
+            elif col.lower() in data:
+                df.at[row_index, col] = data[col.lower()]
+                
+        df.to_excel(excel_path, index=False)
+        print(f"✅ Updated contact at row {row_index} in contacts.xlsx")
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/contacts/export', methods=['GET'])
+def export_contacts():
+    """Export and download contacts.xlsx file."""
+    excel_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
+    if not os.path.exists(excel_path):
+        return jsonify({'error': 'contacts.xlsx not found'}), 404
+    return send_file(excel_path, as_attachment=True, download_name='contacts_exported.xlsx')
 
 
 @app.route('/api/contacts/<int:row_index>', methods=['DELETE'])

@@ -43,6 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Templates
     const txtWaTemplate = document.getElementById('txt-wa-template');
     const txtEmailTemplate = document.getElementById('txt-email-template');
+    const txtEmailSubject = document.getElementById('txt-email-subject');
+    const txtEmailCc = document.getElementById('txt-email-cc');
     const btnSaveTemplates = document.getElementById('btn-save-templates');
     
     // Settings Form
@@ -99,8 +101,15 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
             
             // Toggle active content tab view
-            tabViews.forEach(view => view.classList.remove('active-view'));
-            document.getElementById(`view-${targetId}`).classList.add('active-view');
+            tabViews.forEach(view => {
+                view.classList.remove('active-view');
+                view.style.display = 'none';
+            });
+            const targetView = document.getElementById(`view-${targetId}`);
+            if (targetView) {
+                targetView.classList.add('active-view');
+                targetView.style.display = 'block';
+            }
             
             // Update page headers dynamically
             const titleMap = {
@@ -109,15 +118,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 'contacts': ['Contact List', 'View, search and manage all contacts loaded from Excel'],
                 'templates': ['Configure Message Templates', 'Customize text campaigns for WhatsApp and Gmail'],
                 'settings': ['Campaign Configuration', 'Adjust system parameters, uploads, and attachment rules'],
-                'logs': ['Terminal Output Stream', 'Monitor Selenium automation outputs in real-time']
+                'logs': ['Terminal Output Stream', 'Monitor Selenium automation outputs in real-time'],
+                'history': ['Sent Email Tracker', 'Track which logged-in account has sent which email']
             };
             
-            pageTitle.innerText = titleMap[targetId][0];
-            pageSubtitle.innerText = titleMap[targetId][1];
+            pageTitle.innerText = titleMap[targetId] ? titleMap[targetId][0] : 'Bulk Sender';
+            pageSubtitle.innerText = titleMap[targetId] ? titleMap[targetId][1] : '';
 
-            // Auto-load contacts when navigating to that tab
+            // Auto-load contacts or history when navigating to tabs
             if (targetId === 'contacts') {
                 loadContacts();
+            } else if (targetId === 'history') {
+                loadMailHistory();
             }
         });
     });
@@ -366,6 +378,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Set message templates textareas
             txtWaTemplate.value = data.whatsapp_template || '';
             txtEmailTemplate.value = data.email_template || '';
+            if (txtEmailSubject) txtEmailSubject.value = data.email_subject || '';
+            if (txtEmailCc) txtEmailCc.value = data.email_cc || '';
             
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -381,7 +395,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Read templates text from textareas
             const payload = {
                 'whatsapp_template': txtWaTemplate.value,
-                'email_template': txtEmailTemplate.value
+                'email_template': txtEmailTemplate.value,
+                'email_subject': txtEmailSubject ? txtEmailSubject.value : '',
+                'email_cc': txtEmailCc ? txtEmailCc.value : ''
             };
             
             // Reuse post settings endpoint to save templates
@@ -624,6 +640,7 @@ document.addEventListener('DOMContentLoaded', () => {
             contactsColumns = data.columns || [];
 
             renderContactsTable(allContacts);
+            if (typeof updateLivePreview === 'function') updateLivePreview();
         } catch (err) {
             contactsLoading.style.display = 'none';
             contactsEmpty.style.display = 'flex';
@@ -706,6 +723,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const tdAction = document.createElement('td');
             tdAction.className = 'col-actions';
+            
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn-edit-contact';
+            editBtn.title = 'Edit this contact';
+            editBtn.innerHTML = '<i class="fa-solid fa-pen"></i>';
+            editBtn.addEventListener('click', () => openEditContactModal(realIdx, row));
+            tdAction.appendChild(editBtn);
+
             const delBtn = document.createElement('button');
             delBtn.className = 'btn-delete-contact';
             delBtn.title = 'Delete this contact';
@@ -771,10 +796,323 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- ADD CONTACT MODAL CONTROLLER ---
+    const btnAddContact = document.getElementById('btn-add-contact');
+    const modalAddContact = document.getElementById('modal-add-contact');
+    const btnCloseAddContact = document.getElementById('btn-close-add-contact');
+    const btnCancelAddContact = document.getElementById('btn-cancel-add-contact');
+    const formAddContact = document.getElementById('form-add-contact');
+    const dynamicContactFields = document.getElementById('dynamic-contact-fields');
+    const btnSaveNewContact = document.getElementById('btn-save-new-contact');
+
+    const openAddContactModal = () => {
+        if (!modalAddContact || !dynamicContactFields) return;
+
+        const fieldsToRender = (contactsColumns && contactsColumns.length > 0)
+            ? contactsColumns
+            : ['Name', 'Email', 'Phone'];
+
+        dynamicContactFields.innerHTML = '';
+        fieldsToRender.forEach(col => {
+            const formGroup = document.createElement('div');
+            formGroup.className = 'form-group';
+
+            const label = document.createElement('label');
+            label.innerText = col;
+            label.htmlFor = `input-contact-${col.toLowerCase().replace(/\s+/g, '-')}`;
+
+            const input = document.createElement('input');
+            input.type = col.toLowerCase().includes('email') ? 'email' : 'text';
+            input.className = 'form-control';
+            input.id = `input-contact-${col.toLowerCase().replace(/\s+/g, '-')}`;
+            input.name = col;
+            input.placeholder = `Enter ${col}...`;
+
+            formGroup.appendChild(label);
+            formGroup.appendChild(input);
+            dynamicContactFields.appendChild(formGroup);
+        });
+
+        modalAddContact.style.display = 'flex';
+    };
+
+    const closeAddContactModal = () => {
+        if (modalAddContact) {
+            modalAddContact.style.display = 'none';
+        }
+    };
+
+    if (btnAddContact) {
+        btnAddContact.addEventListener('click', openAddContactModal);
+    }
+    if (btnCloseAddContact) {
+        btnCloseAddContact.addEventListener('click', closeAddContactModal);
+    }
+    if (btnCancelAddContact) {
+        btnCancelAddContact.addEventListener('click', closeAddContactModal);
+    }
+
+    if (formAddContact) {
+        formAddContact.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(formAddContact);
+            const payload = {};
+            formData.forEach((value, key) => {
+                payload[key] = value;
+            });
+
+            try {
+                if (btnSaveNewContact) {
+                    btnSaveNewContact.disabled = true;
+                    btnSaveNewContact.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+                }
+
+                const response = await fetch('/api/contacts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    closeAddContactModal();
+                    if (contactsSearch) contactsSearch.value = '';
+                    await loadContacts();
+                } else {
+                    alert(`Error adding contact: ${result.error}`);
+                }
+            } catch (err) {
+                alert(`Network error adding contact: ${err.message}`);
+            } finally {
+                if (btnSaveNewContact) {
+                    btnSaveNewContact.disabled = false;
+                    btnSaveNewContact.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Contact';
+                }
+            }
+        });
+    }
+
+    // --- EXPORT CONTACTS CONTROLLER ---
+    const btnExportContacts = document.getElementById('btn-export-contacts');
+    if (btnExportContacts) {
+        btnExportContacts.addEventListener('click', () => {
+            window.location.href = '/api/contacts/export';
+        });
+    }
+
+    // --- EDIT CONTACT MODAL CONTROLLER ---
+    const modalEditContact = document.getElementById('modal-edit-contact');
+    const btnCloseEditContact = document.getElementById('btn-close-edit-contact');
+    const btnCancelEditContact = document.getElementById('btn-cancel-edit-contact');
+    const formEditContact = document.getElementById('form-edit-contact');
+    const dynamicEditContactFields = document.getElementById('dynamic-edit-contact-fields');
+    const editContactRowIndex = document.getElementById('edit-contact-row-index');
+    const btnSaveEditContact = document.getElementById('btn-save-edit-contact');
+
+    const openEditContactModal = (realIdx, rowData) => {
+        if (!modalEditContact || !dynamicEditContactFields) return;
+        editContactRowIndex.value = realIdx;
+
+        const fieldsToRender = (contactsColumns && contactsColumns.length > 0)
+            ? contactsColumns
+            : Object.keys(rowData);
+
+        dynamicEditContactFields.innerHTML = '';
+        fieldsToRender.forEach(col => {
+            const formGroup = document.createElement('div');
+            formGroup.className = 'form-group';
+
+            const label = document.createElement('label');
+            label.innerText = col;
+            label.htmlFor = `input-edit-contact-${col.toLowerCase().replace(/\s+/g, '-')}`;
+
+            const input = document.createElement('input');
+            input.type = col.toLowerCase().includes('email') ? 'email' : 'text';
+            input.className = 'form-control';
+            input.id = `input-edit-contact-${col.toLowerCase().replace(/\s+/g, '-')}`;
+            input.name = col;
+            input.value = rowData[col] !== undefined ? rowData[col] : '';
+
+            formGroup.appendChild(label);
+            formGroup.appendChild(input);
+            dynamicEditContactFields.appendChild(formGroup);
+        });
+
+        modalEditContact.style.display = 'flex';
+    };
+
+    const closeEditContactModal = () => {
+        if (modalEditContact) {
+            modalEditContact.style.display = 'none';
+        }
+    };
+
+    if (btnCloseEditContact) btnCloseEditContact.addEventListener('click', closeEditContactModal);
+    if (btnCancelEditContact) btnCancelEditContact.addEventListener('click', closeEditContactModal);
+
+    if (formEditContact) {
+        formEditContact.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const realIdx = editContactRowIndex.value;
+            const formData = new FormData(formEditContact);
+            const payload = {};
+            formData.forEach((value, key) => {
+                if (key !== 'row_index') payload[key] = value;
+            });
+
+            try {
+                if (btnSaveEditContact) {
+                    btnSaveEditContact.disabled = true;
+                    btnSaveEditContact.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Updating...';
+                }
+
+                const response = await fetch(`/api/contacts/${realIdx}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    closeEditContactModal();
+                    await loadContacts();
+                } else {
+                    alert(`Error updating contact: ${result.error}`);
+                }
+            } catch (err) {
+                alert(`Network error updating contact: ${err.message}`);
+            } finally {
+                if (btnSaveEditContact) {
+                    btnSaveEditContact.disabled = false;
+                    btnSaveEditContact.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Update Contact';
+                }
+            }
+        });
+    }
+
+    // --- VARIABLE CHIPS & LIVE PREVIEW CONTROLLER ---
+    const chipButtons = document.querySelectorAll('.chip-tag');
+    const previewWaBody = document.getElementById('preview-wa-body');
+    const previewEmailBody = document.getElementById('preview-email-body');
+
+    chipButtons.forEach(chip => {
+        chip.addEventListener('click', () => {
+            const container = chip.closest('.variable-chips-container');
+            if (!container) return;
+            const targetId = container.getAttribute('data-target');
+            const targetTextarea = document.getElementById(targetId);
+            if (!targetTextarea) return;
+
+            const tagToInsert = chip.getAttribute('data-tag');
+            const start = targetTextarea.selectionStart || targetTextarea.value.length;
+            const end = targetTextarea.selectionEnd || targetTextarea.value.length;
+            const val = targetTextarea.value;
+
+            targetTextarea.value = val.substring(0, start) + tagToInsert + val.substring(end);
+            targetTextarea.focus();
+            targetTextarea.selectionStart = targetTextarea.selectionEnd = start + tagToInsert.length;
+
+            // Trigger input event to update live preview
+            targetTextarea.dispatchEvent(new Event('input'));
+        });
+    });
+
+    const updateLivePreview = () => {
+        const sampleContact = (allContacts && allContacts.length > 0)
+            ? allContacts[0]
+            : { Name: 'John Doe', Email: 'john@example.com', Phone: '+919876543210' };
+
+        const renderText = (templateText) => {
+            if (!templateText) return '<em>No message content...</em>';
+            let res = templateText;
+            Object.keys(sampleContact).forEach(key => {
+                const val = sampleContact[key] || '';
+                res = res.replace(new RegExp(`\\{${key}\\}`, 'gi'), val);
+            });
+            return res;
+        };
+
+        if (previewWaBody && txtWaTemplate) {
+            previewWaBody.innerHTML = renderText(txtWaTemplate.value);
+        }
+        if (previewEmailBody && txtEmailTemplate) {
+            let emailContent = renderText(txtEmailTemplate.value);
+            if (txtEmailSubject && txtEmailSubject.value) {
+                const subjRendered = renderText(txtEmailSubject.value);
+                emailContent = `<strong>Subject: ${subjRendered}</strong><br><hr style="border:0;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0;"><br>` + emailContent;
+            }
+            previewEmailBody.innerHTML = emailContent;
+        }
+    };
+
+    if (txtWaTemplate) txtWaTemplate.addEventListener('input', updateLivePreview);
+    if (txtEmailTemplate) txtEmailTemplate.addEventListener('input', updateLivePreview);
+    if (txtEmailSubject) txtEmailSubject.addEventListener('input', updateLivePreview);
+    if (txtEmailCc) txtEmailCc.addEventListener('input', updateLivePreview);
+
+    // --- AUTH & MAIL HISTORY TRACKER CONTROLLER ---
+    const fetchUserInfo = async () => {
+        try {
+            const res = await fetch('/api/user_info');
+            const data = await res.json();
+            const userDisp = document.getElementById('user-display-name');
+            if (userDisp) {
+                userDisp.innerText = data.logged_in ? data.username : 'Account';
+            }
+        } catch (e) {
+            console.error("Failed to fetch user info", e);
+        }
+    };
+
+    const loadMailHistory = async () => {
+        const historyTbody = document.getElementById('history-table-body');
+        if (!historyTbody) return;
+        try {
+            historyTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Loading sent history...</td></tr>`;
+            const res = await fetch('/api/mail_history');
+            const data = await res.json();
+            if (data.success && data.emails) {
+                if (data.emails.length === 0) {
+                    historyTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">No sent emails logged for this account yet.</td></tr>`;
+                    return;
+                }
+                historyTbody.innerHTML = data.emails.map(item => {
+                    const dt = item.timestamp ? new Date(item.timestamp).toLocaleString() : '-';
+                    const statusBadge = item.status === 'success'
+                        ? `<span style="background:rgba(34,197,94,0.15); color:#86efac; padding:3px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;"><i class="fa-solid fa-check"></i> Success</span>`
+                        : `<span style="background:rgba(239,68,68,0.15); color:#fca5a5; padding:3px 8px; border-radius:12px; font-size:0.8rem; font-weight:600;" title="${item.error_message || ''}"><i class="fa-solid fa-triangle-exclamation"></i> Failed</span>`;
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 12px; font-size: 0.85rem; color:#cbd5e1;">${dt}</td>
+                            <td style="padding: 12px; font-weight:600; color:#c084fc;">${item.username || '-'}</td>
+                            <td style="padding: 12px; font-size: 0.85rem; color:#94a3b8;">${item.sender_email || '-'}</td>
+                            <td style="padding: 12px; font-weight:500;">${item.recipient_name || '-'}</td>
+                            <td style="padding: 12px; font-size: 0.85rem; color:#818cf8;">${item.recipient_email || '-'}</td>
+                            <td style="padding: 12px; font-size: 0.85rem; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.subject || '-'}</td>
+                            <td style="padding: 12px;">${statusBadge}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                historyTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #fca5a5;">Failed to load sent history.</td></tr>`;
+            }
+        } catch (e) {
+            historyTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #fca5a5;">Error loading tracking data.</td></tr>`;
+        }
+    };
+
+    const btnRefreshHist = document.getElementById('btn-refresh-history');
+    if (btnRefreshHist) {
+        btnRefreshHist.addEventListener('click', loadMailHistory);
+    }
+
     // --- INITIALIZATION CAMPAIGN ---
+    fetchUserInfo();
     loadSettings();
+    updateLivePreview();
     
     // Status polling intervals
     setInterval(fetchStatus, 1000);
     setInterval(fetchLogs, 1000);
 });
+

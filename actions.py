@@ -11,6 +11,7 @@ import urllib.parse
 from datetime import datetime
 
 import json
+from db import db_manager
 
 def get_valid_brochures():
     try:
@@ -50,7 +51,8 @@ def get_message_body(name):
                 cfg = json.load(f)
             custom_template = cfg.get('whatsapp_template', '')
             if custom_template:
-                res = custom_template.replace('{Name}', name).replace('{name}', name)
+                res = str(custom_template)
+                res = res.replace('{Name}', str(name)).replace('{name}', str(name)).replace('{NAME}', str(name))
                 return clean_text_for_selenium(res)
     except Exception as e:
         print(f"Error loading custom WhatsApp template: {e}")
@@ -122,7 +124,8 @@ def get_email_body_text(name):
                 cfg = json.load(f)
             custom_template = cfg.get('email_template', '')
             if custom_template:
-                res = custom_template.replace('{Name}', name).replace('{name}', name)
+                res = str(custom_template)
+                res = res.replace('{Name}', str(name)).replace('{name}', str(name)).replace('{NAME}', str(name))
                 return clean_text_for_selenium(res)
     except Exception as e:
         print(f"Error loading custom Email template: {e}")
@@ -174,6 +177,37 @@ Team EVOLVAI 2K26
 Joy University"""
     
     return clean_text_for_selenium(message)
+
+
+def get_email_subject(name=""):
+    try:
+        if os.path.exists('config.json'):
+            with open('config.json', 'r') as f:
+                cfg = json.load(f)
+            custom_subject = cfg.get('email_subject', '')
+            if custom_subject:
+                res = str(custom_subject).replace('{Name}', str(name)).replace('{name}', str(name))
+                return clean_text_for_selenium(res)
+    except Exception as e:
+        print(f"Error loading custom Email subject: {e}")
+    return "EVOLVAI 2K26 – Event Details, Bus Boarding Points & Schedule"
+
+
+def get_email_cc():
+    try:
+        if os.path.exists('config.json'):
+            with open('config.json', 'r') as f:
+                cfg = json.load(f)
+            cc_val = cfg.get('email_cc', '')
+            if isinstance(cc_val, list):
+                return [str(e).strip() for e in cc_val if str(e).strip()]
+            elif isinstance(cc_val, str) and cc_val.strip():
+                import re
+                return [e.strip() for e in re.split(r'[,;]', cc_val) if e.strip()]
+    except Exception as e:
+        print(f"Error loading custom Email CC: {e}")
+    return CC_RECIPIENTS
+
 
 
 def close_all_compose_windows(driver):
@@ -232,14 +266,21 @@ def close_all_compose_windows(driver):
         return 0
 
 
-def send_whatsapp_message(driver, phone, name, ml_optimizer=None):
+class CancelledException(Exception):
+    pass
+
+def send_whatsapp_message(driver, phone, name, ml_optimizer=None, cancel_check=None):
     def a_sleep(secs):
-        if ml_optimizer and hasattr(ml_optimizer, 'get_action_delay'):
-            import time as _time
-            _time.sleep(ml_optimizer.get_action_delay(secs))
-        else:
-            import time as _time
-            _time.sleep(secs)
+        if cancel_check and cancel_check():
+            raise CancelledException("Cancellation requested.")
+        import time as _time
+        slept = 0.0
+        delay = ml_optimizer.get_action_delay(secs) if (ml_optimizer and hasattr(ml_optimizer, 'get_action_delay')) else secs
+        while slept < delay:
+            if cancel_check and cancel_check():
+                raise CancelledException("Cancellation requested.")
+            _time.sleep(0.2)
+            slept += 0.2
 
     try:
         message = get_message_body(name)
@@ -266,7 +307,17 @@ def send_whatsapp_message(driver, phone, name, ml_optimizer=None):
         print(f"   📱 Phone: +{formatted_phone}")
         driver.get(url)
         
-        a_sleep(5)
+        # Wait up to 45 seconds for WhatsApp Web chat/message input area to load
+        print("   ⏳ Waiting for WhatsApp chat input area to load...")
+        try:
+            WebDriverWait(driver, 45).until(
+                EC.presence_of_element_located((By.XPATH, '//div[@title="Type a message"] | //button[@aria-label="Send"] | //span[@data-icon="send"] | //span[@data-testid="send"]'))
+            )
+            print("   ✅ WhatsApp chat page loaded!")
+        except Exception as e:
+            print(f"   ⚠️  [WhatsApp] Timeout/warning waiting for chat page to load: {e}")
+        
+        a_sleep(3)
         
         send_button_selectors = [
             '//button[@aria-label="Send"]',
@@ -399,10 +450,11 @@ def send_whatsapp_message(driver, phone, name, ml_optimizer=None):
                 except Exception as e:
                     print(f"   ⚠️  [WhatsApp] Failed to attach {os.path.basename(brochure_path)}: {str(e)}")
         
-        # Delay before next contact removed as per request
-        
         return True
         
+    except CancelledException:
+        print("🛑 [WhatsApp] Sending process cancelled during message execution.")
+        return False
     except TimeoutException:
         print(f"❌ [WhatsApp] Timeout: Could not send message to {name} ({phone})")
         print(f"   💡 Make sure the contact exists on WhatsApp")
@@ -413,14 +465,18 @@ def send_whatsapp_message(driver, phone, name, ml_optimizer=None):
 
 
 
-def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=None):
+def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=None, cancel_check=None, username=None):
     def a_sleep(secs):
-        if ml_optimizer and hasattr(ml_optimizer, 'get_action_delay'):
-            import time as _time
-            _time.sleep(ml_optimizer.get_action_delay(secs))
-        else:
-            import time as _time
-            _time.sleep(secs)
+        if cancel_check and cancel_check():
+            raise CancelledException("Cancellation requested.")
+        import time as _time
+        slept = 0.0
+        delay = ml_optimizer.get_action_delay(secs) if (ml_optimizer and hasattr(ml_optimizer, 'get_action_delay')) else secs
+        while slept < delay:
+            if cancel_check and cancel_check():
+                raise CancelledException("Cancellation requested.")
+            _time.sleep(0.2)
+            slept += 0.2
 
     start_time = time.time()
     
@@ -507,7 +563,7 @@ def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=
             selector_used = None
             
             import time as _time
-            end_time = _time.time() + 5
+            end_time = _time.time() + 15
             while _time.time() < end_time and not to_field:
                 for selector in to_selectors:
                     try:
@@ -662,8 +718,9 @@ def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=
             print(f"   ⚠️  Could not verify compose window state: {verify_error}")
         
         # Add CC recipients if configured
-        if CC_RECIPIENTS:
-            print(f"   📧 Step 2b: Adding {len(CC_RECIPIENTS)} CC recipient(s)...")
+        active_cc_list = get_email_cc()
+        if active_cc_list:
+            print(f"   📧 Step 2b: Adding {len(active_cc_list)} CC recipient(s)...")
             try:
                 a_sleep(0.5)
                 
@@ -727,15 +784,15 @@ def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=
                     a_sleep(0.3)
                     cc_field.clear()
                     
-                    for i, cc_email in enumerate(CC_RECIPIENTS):
+                    for i, cc_email in enumerate(active_cc_list):
                         cc_field.send_keys(cc_email)
-                        if i < len(CC_RECIPIENTS) - 1:
+                        if i < len(active_cc_list) - 1:
                             # Use comma or Tab to add multiple CC recipients
                             from selenium.webdriver.common.keys import Keys
                             cc_field.send_keys(Keys.ENTER)
                             a_sleep(0.2)
                     
-                    print(f"   ✅ Added CC recipients: {', '.join(CC_RECIPIENTS)}")
+                    print(f"   ✅ Added CC recipients: {', '.join(active_cc_list)}")
                     a_sleep(0.5)
                 else:
                     print(f"   ⚠️  Could not find CC field - emails will be sent without CC")
@@ -773,7 +830,7 @@ def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=
                 print("   ❌ Cannot verify compose window state")
                 return False
             
-            subject_text = "EVOLVAI 2K26 – Event Details, Bus Boarding Points & Schedule"
+            subject_text = get_email_subject(name)
             subject_entered = False
             
             # PRIMARY METHOD: Find and click the subject field directly (MOST RELIABLE)
@@ -1220,6 +1277,26 @@ def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=
         time_taken = time.time() - start_time
         print(f"✅ [Email] Message sent to {name}! (took {time_taken:.1f}s)")
         
+        sender_email = ''
+        subject = ''
+        try:
+            if os.path.exists('config.json'):
+                with open('config.json', 'r') as f:
+                    c = json.load(f)
+                    sender_email = c.get('gmail_sender', '')
+                    subject = c.get('email_subject', '')
+        except:
+            pass
+
+        db_manager.record_sent_email(
+            username=username or 'system',
+            sender_email=sender_email,
+            recipient_name=name,
+            recipient_email=to_email,
+            subject=subject,
+            status='success'
+        )
+
         if analytics and ml_optimizer:
             analytics.record_send({
                 'name': name,
@@ -1235,10 +1312,34 @@ def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=
         
         return True
         
+    except CancelledException:
+        print("🛑 [Email] Sending process cancelled during email execution.")
+        return False
     except Exception as e:
         time_taken = time.time() - start_time
         print(f"❌ [Email] Error sending to {name} ({to_email}): {str(e)}")
         
+        sender_email = ''
+        subject = ''
+        try:
+            if os.path.exists('config.json'):
+                with open('config.json', 'r') as f:
+                    c = json.load(f)
+                    sender_email = c.get('gmail_sender', '')
+                    subject = c.get('email_subject', '')
+        except:
+            pass
+
+        db_manager.record_sent_email(
+            username=username or 'system',
+            sender_email=sender_email,
+            recipient_name=name,
+            recipient_email=to_email,
+            subject=subject,
+            status='failed',
+            error_message=str(e)
+        )
+
         if analytics:
             analytics.record_send({
                 'name': name,

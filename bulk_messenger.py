@@ -120,38 +120,49 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
     print("[WhatsApp] Opening WhatsApp Web...")
     driver.get("https://web.whatsapp.com")
     
-    if on_waiting:
-        on_waiting()
-    
-    print("\n" + "=" * 60)
-    print("   WHATSAPP LOGIN — MANUAL CONFIRMATION REQUIRED")
-    print("=" * 60)
-    print("\n📱 Steps to log in:")
-    print("   1. Look at the Chrome window that just opened")
-    print("   2. Scan the QR code with your WhatsApp mobile app")
-    print("      (WhatsApp → Linked Devices → Link a Device)")
-    print("   3. Wait for the WhatsApp inbox to fully load")
-    print("   4. Come back here and click  ✅ Confirm WhatsApp Login")
-    print("\n⏸️  Waiting for you to click the Confirm button on the dashboard...")
-    
     logged_in = False
-    start_wait = time.time()
-    # Wait up to 5 minutes — user must click confirm button
+    print("⏳ Checking for existing WhatsApp session...")
     try:
-        while time.time() - start_wait < 300:
-            if cancel_check and cancel_check():
-                print("🛑 WhatsApp login cancelled by user.")
-                break
-            if confirm_check and confirm_check():
-                logged_in = True
-                break
-            time.sleep(1)
-    finally:
-        if on_finished:
-            on_finished()
+        # Check if already logged in (chat list or compose box present)
+        WebDriverWait(driver, 6).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@id="pane-side"] | //div[@role="textbox"]'))
+        )
+        print("✅ [WhatsApp] Active session detected automatically!")
+        logged_in = True
+    except:
+        print("ℹ️  No active WhatsApp session found. Manual login required.")
+
+    if not logged_in:
+        if on_waiting:
+            on_waiting()
+        
+        print("\n" + "=" * 60)
+        print("   WHATSAPP LOGIN — MANUAL CONFIRMATION REQUIRED")
+        print("=" * 60)
+        print("\n📱 Steps to log in:")
+        print("   1. Look at the Chrome window that just opened")
+        print("   2. Scan the QR code with your WhatsApp mobile app")
+        print("      (WhatsApp → Linked Devices → Link a Device)")
+        print("   3. Wait for the WhatsApp inbox to fully load")
+        print("   4. Come back here and click  ✅ Confirm WhatsApp Login")
+        print("\n⏸️  Waiting for you to click the Confirm button on the dashboard...")
+        
+        start_wait = time.time()
+        try:
+            while time.time() - start_wait < 300:
+                if cancel_check and cancel_check():
+                    print("🛑 WhatsApp login cancelled by user.")
+                    break
+                if confirm_check and confirm_check():
+                    logged_in = True
+                    break
+                time.sleep(1)
+        finally:
+            if on_finished:
+                on_finished()
     
     if logged_in:
-        print("✅ [WhatsApp] Login confirmed! Ready to send messages.\n")
+        print("✅ [WhatsApp] Session confirmed! Ready to send messages.\n")
     else:
         if not (cancel_check and cancel_check()):
             print("❌ [WhatsApp] Confirmation timeout (5 minutes exceeded).")
@@ -236,50 +247,55 @@ def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on
     except Exception as e:
         print(f"[Email] Warning during navigation: {e}")
         
-    if on_waiting:
-        on_waiting()
-    
-    print("\n" + "=" * 60)
-    print("   GMAIL LOGIN — MANUAL CONFIRMATION REQUIRED")
-    print("=" * 60)
-    print("\n📧 Steps to log in:")
-    print("   1. Look at the Chrome window that just opened")
-    print("   2. Enter your Gmail address and click Next")
-    print("   3. Enter your password and click Next")
-    print("   4. Complete any 2FA verification if prompted")
-    print("   5. Wait until you can see your Gmail inbox")
-    print("   6. Come back here and click  ✅ Confirm Gmail Login")
-    print("\n⏸️  Waiting for you to click the Confirm button on the dashboard...")
-    
     logged_in = False
-    start_wait = time.time()
-    # Wait up to 5 minutes — user must click confirm button
+    print("⏳ Checking for existing Gmail session...")
     try:
-        while time.time() - start_wait < 300:
-            if cancel_check and cancel_check():
-                print("🛑 Gmail login cancelled by user.")
-                break
-            if confirm_check and confirm_check():
-                logged_in = True
-                break
-            time.sleep(1)
-    finally:
-        if on_finished:
-            on_finished()
+        # Check if already logged in (Compose button or Inbox present)
+        WebDriverWait(driver, 6).until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(text(), 'Compose')] | //div[contains(@class, 'T-I-KE')] | //a[contains(@href, 'Logout')]"))
+        )
+        print("✅ [Email] Active Gmail session detected automatically!")
+        logged_in = True
+    except:
+        print("ℹ️  No active Gmail session found. Manual login required.")
+
+    if not logged_in:
+        if on_waiting:
+            on_waiting()
+        
+        print("\n" + "=" * 60)
+        print("   GMAIL LOGIN — MANUAL CONFIRMATION REQUIRED")
+        print("=" * 60)
+        print("\n📧 Steps to log in:")
+        print("   1. Look at the Chrome window that just opened")
+        print("   2. Enter your Gmail address and click Next")
+        print("   3. Enter your password and click Next")
+        print("   4. Complete any 2FA verification if prompted")
+        print("   5. Wait until you can see your Gmail inbox")
+        print("   6. Come back here and click  ✅ Confirm Gmail Login")
+        print("\n⏸️  Waiting for you to click the Confirm button on the dashboard...")
+        
+        start_wait = time.time()
+        try:
+            while time.time() - start_wait < 300:
+                if cancel_check and cancel_check():
+                    print("🛑 Gmail login cancelled by user.")
+                    break
+                if confirm_check and confirm_check():
+                    logged_in = True
+                    break
+                time.sleep(1)
+        finally:
+            if on_finished:
+                on_finished()
     
     if logged_in:
-        print("✅ [Email] Login confirmed! Navigating to Gmail inbox...\n")
-        # Navigate to inbox after manual confirmation
-        try:
-            driver.get("https://mail.google.com/mail/u/0/#inbox")
-            time.sleep(3)
-        except:
-            pass
+        print("✅ [Email] Session confirmed! Ready to send emails.\n")
     else:
         if not (cancel_check and cancel_check()):
             print("❌ [Email] Confirmation timeout (5 minutes exceeded).")
             raise Exception("Gmail login confirmation timeout.")
-    
+            
     return driver
 
 
@@ -315,7 +331,7 @@ def display_menu():
 def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback=None, cancel_check=None,
                         confirm_check_whatsapp=None, confirm_check_gmail=None,
                         on_waiting_whatsapp=None, on_finished_whatsapp=None,
-                        on_waiting_gmail=None, on_finished_gmail=None):
+                        on_waiting_gmail=None, on_finished_gmail=None, username=None):
     global ML_ENABLED
     
     contacts_df = read_contacts()
@@ -338,33 +354,28 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
     use_whatsapp = choice in ['1', '3']
     use_email = choice in ['2', '3']
     
+    # Check and reuse active drivers or initialize new session preserving persistent Chrome profiles
     if use_whatsapp:
-        if whatsapp_driver is None or not actions.is_browser_alive(whatsapp_driver):
+        if whatsapp_driver is not None and actions.is_browser_alive(whatsapp_driver):
+            print("✅ [WhatsApp] Reusing existing active browser session...")
+        else:
             whatsapp_driver = init_whatsapp_driver(
                 cancel_check=cancel_check,
                 confirm_check=confirm_check_whatsapp,
                 on_waiting=on_waiting_whatsapp,
                 on_finished=on_finished_whatsapp
             )
-        else:
-            print("✅ [WhatsApp] Reusing existing Chrome session.")
             
     if use_email:
-        if gmail_driver is None or not actions.is_browser_alive(gmail_driver):
+        if gmail_driver is not None and actions.is_browser_alive(gmail_driver):
+            print("✅ [Email] Reusing existing active browser session...")
+        else:
             gmail_driver = init_gmail_driver(
                 cancel_check=cancel_check,
                 confirm_check=confirm_check_gmail,
                 on_waiting=on_waiting_gmail,
                 on_finished=on_finished_gmail
             )
-        else:
-            print("✅ [Email] Reusing existing Chrome session.")
-            try:
-                if "mail.google.com/mail" not in gmail_driver.current_url:
-                    gmail_driver.get("https://mail.google.com/mail/u/0/#inbox")
-                    time.sleep(2)
-            except:
-                pass
                 
     whatsapp_success = 0
     email_success = 0
@@ -423,7 +434,7 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
             if not phone:
                 print("⚠️  [WhatsApp] No phone number found, skipping...")
             else:
-                if actions.send_whatsapp_message(whatsapp_driver, str(phone), name, ml_optimizer):
+                if actions.send_whatsapp_message(whatsapp_driver, str(phone), name, ml_optimizer, cancel_check=cancel_check):
                     whatsapp_success += 1
                     
         if use_email:
@@ -436,7 +447,7 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
                 print("⚠️  [Email] No email address found, skipping...")
             else:
                 send_start = time.time()
-                if actions.send_email_via_browser(gmail_driver, email, name, ml_optimizer, analytics):
+                if actions.send_email_via_browser(gmail_driver, email, name, ml_optimizer, analytics, cancel_check=cancel_check, username=username):
                     email_success += 1
                     send_duration = time.time() - send_start
                     if ml_optimizer:

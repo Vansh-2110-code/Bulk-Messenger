@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk Messenger Dashboard | Lintcloud Technologies</title>
+    <title>Bulk Messenger Dashboard</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,10 +18,10 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="brand">
-                <i class="fa-solid fa-paper-plane brand-logo"></i>
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Sanna Innovations Logo" class="brand-img">
                 <div class="brand-text">
                     <h2>Bulk Sender</h2>
-                    <span>Lintcloud Tech</span>
+                    <span>Sanna Innovations</span>
                 </div>
             </div>
             
@@ -44,10 +44,13 @@
                 <a href="#logs" class="nav-item" id="nav-logs">
                     <i class="fa-solid fa-terminal"></i> Terminal Logs
                 </a>
+                <a href="#history" class="nav-item" id="nav-history">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Sent Mail Tracker
+                </a>
             </nav>
             
             <div class="sidebar-footer">
-                <p>&copy; 2026 Lintcloud Technologies</p>
+                <p>&copy; 2026 Bulk Sender</p>
             </div>
         </aside>
 
@@ -59,10 +62,14 @@
                     <h1 id="page-title">Dashboard Overview</h1>
                     <p id="page-subtitle">Real-time stats and control center</p>
                 </div>
-                <div class="system-status">
+                <div class="system-status" style="display: flex; align-items: center; gap: 12px;">
                     <span class="status-indicator idle" id="global-status-badge">
                         <span class="dot"></span> <span id="global-status-text">System Idle</span>
                     </span>
+                    <div class="user-profile-badge" style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.12);">
+                        <span style="font-size: 0.9rem; color: #cbd5e1;"><i class="fa-solid fa-circle-user" style="color:#ef4444;"></i> <strong id="user-display-name">Loading...</strong></span>
+                        <a href="/logout" title="Logout" style="color: #ff6b6b; text-decoration: none; font-size: 0.85rem; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: rgba(239,68,68,0.15); transition: all 0.2s;"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+                    </div>
                 </div>
             </header>
 
@@ -219,8 +226,14 @@
                         <input type="text" id="contacts-search" class="form-control contacts-search-input" placeholder="Search by name, phone or email...">
                     </div>
                     <div class="contacts-actions">
+                        <button class="btn btn-primary" id="btn-add-contact" title="Add contact manually">
+                            <i class="fa-solid fa-user-plus"></i> Add Contact
+                        </button>
                         <button class="btn btn-secondary" id="btn-refresh-contacts" title="Reload contacts from file">
                             <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                        </button>
+                        <button class="btn btn-secondary" id="btn-export-contacts" title="Export contacts list to Excel">
+                            <i class="fa-solid fa-file-export"></i> Export Excel
                         </button>
                         <span class="contacts-count-badge" id="contacts-count-badge">0 contacts</span>
                     </div>
@@ -306,17 +319,55 @@
                             <div class="composer-box">
                                 <h3><i class="fa-brands fa-whatsapp text-success"></i> WhatsApp Text Message</h3>
                                 <textarea id="txt-wa-template" class="form-control text-area-large" placeholder="Write WhatsApp message body..."></textarea>
+                                <div class="variable-chips-container" data-target="txt-wa-template">
+                                    <span class="var-chip-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Insert Tag:</span>
+                                    <button type="button" class="chip-tag" data-tag="{Name}">{Name}</button>
+                                    <button type="button" class="chip-tag" data-tag="{Email}">{Email}</button>
+                                    <button type="button" class="chip-tag" data-tag="{Phone}">{Phone}</button>
+                                </div>
                             </div>
                             
                             <div class="composer-box">
-                                <h3><i class="fa-solid fa-envelope text-primary"></i> Gmail Message Body</h3>
+                                <h3><i class="fa-solid fa-envelope text-primary"></i> Gmail Options & Body</h3>
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="txt-email-subject" style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">Email Subject Line</label>
+                                    <input type="text" id="txt-email-subject" class="form-control" placeholder="e.g. Event Details & Schedule">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 12px;">
+                                    <label for="txt-email-cc" style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">CC Recipients (comma-separated)</label>
+                                    <input type="text" id="txt-email-cc" class="form-control" placeholder="e.g. supervisor@domain.com, manager@domain.com">
+                                </div>
+                                <label style="font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; color: var(--text-secondary);">Email Body Content</label>
                                 <textarea id="txt-email-template" class="form-control text-area-large" placeholder="Write Gmail body..."></textarea>
+                                <div class="variable-chips-container" data-target="txt-email-template">
+                                    <span class="var-chip-label"><i class="fa-solid fa-wand-magic-sparkles"></i> Insert Tag:</span>
+                                    <button type="button" class="chip-tag" data-tag="{Name}">{Name}</button>
+                                    <button type="button" class="chip-tag" data-tag="{Email}">{Email}</button>
+                                    <button type="button" class="chip-tag" data-tag="{Phone}">{Phone}</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="actions-panel">
+
+                        <div class="actions-panel" style="margin-bottom: 24px;">
                             <button class="btn btn-primary" id="btn-save-templates">
                                 <i class="fa-solid fa-floppy-disk"></i> Save Message Templates
                             </button>
+                        </div>
+
+                        <!-- Live Message Preview Section -->
+                        <div class="template-preview-section">
+                            <h3 style="display:flex;align-items:center;font-size:18px;margin-bottom:6px;"><i class="fa-solid fa-eye" style="color:var(--accent-purple); margin-right: 8px;"></i>Live Message Preview</h3>
+                            <p class="description" style="margin-bottom: 16px;">Real-time sample rendering of how your message will appear to recipients.</p>
+                            <div class="preview-cards-grid">
+                                <div class="preview-card wa-preview-card">
+                                    <div class="preview-card-header"><i class="fa-brands fa-whatsapp"></i> WhatsApp Live Render</div>
+                                    <div class="preview-card-body" id="preview-wa-body">Type a message to preview...</div>
+                                </div>
+                                <div class="preview-card email-preview-card">
+                                    <div class="preview-card-header"><i class="fa-solid fa-envelope"></i> Gmail Live Render</div>
+                                    <div class="preview-card-body" id="preview-email-body">Type a message to preview...</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -448,9 +499,89 @@
                 </div>
             </section>
 
+            <!-- Sent Mail Tracker View -->
+            <section id="view-history" class="tab-view">
+                <div class="glass-card">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <h2><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent-purple); margin-right: 8px;"></i>Sent Email Tracking History</h2>
+                            <p style="color: #94a3b8; font-size: 0.9rem; margin-top: 4px;">Track which logged-in account has sent which email</p>
+                        </div>
+                        <button class="btn btn-secondary" id="btn-refresh-history">
+                            <i class="fa-solid fa-rotate"></i> Refresh History
+                        </button>
+                    </div>
+                    <div class="table-container" style="overflow-x: auto;">
+                        <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); color: #94a3b8;">
+                                    <th style="padding: 12px;">Timestamp</th>
+                                    <th style="padding: 12px;">Account User</th>
+                                    <th style="padding: 12px;">Sender Email</th>
+                                    <th style="padding: 12px;">Recipient Name</th>
+                                    <th style="padding: 12px;">Recipient Email</th>
+                                    <th style="padding: 12px;">Subject</th>
+                                    <th style="padding: 12px;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <tr><td colspan="7" style="text-align: center; padding: 20px; color: #94a3b8;">Loading records...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
     
+    <!-- Add Contact Modal -->
+    <div class="modal-overlay" id="modal-add-contact" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-user-plus" style="color:var(--accent-purple); margin-right: 8px;"></i>Add New Contact</h2>
+                <button class="btn-close-modal" id="btn-close-add-contact"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-add-contact">
+                    <div id="dynamic-contact-fields">
+                        <!-- Dynamic fields based on excel schema will load here -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-add-contact">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="btn-save-new-contact">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Contact
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Contact Modal -->
+    <div class="modal-overlay" id="modal-edit-contact" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-user-pen" style="color:var(--accent-blue); margin-right: 8px;"></i>Edit Contact Details</h2>
+                <button class="btn-close-modal" id="btn-close-edit-contact"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-edit-contact">
+                    <input type="hidden" id="edit-contact-row-index" name="row_index">
+                    <div id="dynamic-edit-contact-fields">
+                        <!-- Dynamic edit fields based on excel schema will load here -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-edit-contact">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="btn-save-edit-contact">
+                            <i class="fa-solid fa-floppy-disk"></i> Update Contact
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Application Logic -->
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
