@@ -116,7 +116,7 @@ When you select option [2] or [3]:
 
 If you want to attach a brochure PDF to emails:
 1. Place your PDF in the same folder as `bulk_messenger.py`
-2. Name it `Lintcloud_Brochure.pdf` (or update `BROCHURE_PATH` in the script)
+2. Name it `Brochure.pdf` (or update `BROCHURE_PATH` in the script)
 
 ## Important Notes
 
@@ -142,7 +142,7 @@ If you want to attach a brochure PDF to emails:
 - Session persists as long as browser stays open
 
 ⚠️ **Attachment:**
-- Place `Lintcloud_Brochure.pdf` in the same folder
+- Place `Brochure.pdf` in the same folder
 - Script will attach it automatically to each email
 - If file not found, emails sent without attachment
 - Update `BROCHURE_PATH` if file is elsewhere
@@ -231,7 +231,7 @@ bulk/
 ├── bulk_messenger.py           # Main script
 ├── create_sample_excel.py      # Helper to create sample Excel
 ├── contacts.xlsx               # Your contacts (create this)
-├── Lintcloud_Brochure.pdf      # Your PDF attachment (add this)
+├── Brochure.pdf                # Your PDF attachment (add this)
 ├── requirements.txt            # Python dependencies
 └── README.md                   # This file
 
