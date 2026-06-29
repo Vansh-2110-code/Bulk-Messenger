@@ -44,8 +44,8 @@ Place your brochure PDF in the same folder and name it `Lintcloud_Brochure.pdf` 
 Open `bulk_messenger.py` and update:
 
 ```python
-YOUR_MOBILE_NUMBER = "7569351717"  # Your mobile number
-YOUR_GMAIL_ID = "srikakulaanirudh0506@gmail.com"  # Your Gmail ID
+YOUR_MOBILE_NUMBER = # Your mobile number
+YOUR_GMAIL_ID = # Your Gmail ID
 ```
 
 **That's it! No password configuration needed.**
