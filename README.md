@@ -234,17 +234,6 @@ bulk/
 ├── Lintcloud_Brochure.pdf      # Your PDF attachment (add this)
 ├── requirements.txt            # Python dependencies
 └── README.md                   # This file
-```
-
-## Support
-
-For issues or questions:
-- **Email:** srikakulaanirudh0506@gmail.com
-- **Phone:** 7569351717
-
-## License
-
-© 2026 Lintcloud Technologies. All rights reserved.
 
 ---
 
