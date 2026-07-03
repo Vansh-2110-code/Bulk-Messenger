@@ -4,23 +4,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const tabViews = document.querySelectorAll('.tab-view');
     const pageTitle = document.getElementById('page-title');
     const pageSubtitle = document.getElementById('page-subtitle');
-    
+
     // Stats elements
     const statTotal = document.getElementById('stat-total');
     const statWhatsapp = document.getElementById('stat-whatsapp');
     const statEmail = document.getElementById('stat-email');
     const statSpeed = document.getElementById('stat-speed');
-    
+
     // Status elements
     const globalStatusBadge = document.getElementById('global-status-badge');
     const globalStatusText = document.getElementById('global-status-text');
     const statusWhatsappBrowser = document.getElementById('status-whatsapp-browser');
     const statusGmailBrowser = document.getElementById('status-gmail-browser');
-    
+
     // Session elements
     const sessionStatusWa = document.getElementById('session-status-wa');
     const sessionStatusGm = document.getElementById('session-status-gm');
-    
+
     // Progress elements
     const progressBar = document.getElementById('progress-bar');
     const progressPercent = document.getElementById('progress-percent');
@@ -29,39 +29,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentName = document.getElementById('current-name');
     const currentPhone = document.getElementById('current-phone');
     const currentEmail = document.getElementById('current-email');
-    
+
     // Control Buttons
     const btnStart = document.getElementById('btn-start');
     const btnStop = document.getElementById('btn-stop');
     const btnDispatchLaunch = document.getElementById('btn-dispatch-launch');
     const messagingMode = document.getElementById('messaging-mode');
-    
+
     // Session Buttons
     const btnLoginWhatsapp = document.getElementById('btn-login-whatsapp');
     const btnLoginGmail = document.getElementById('btn-login-gmail');
-    
+
     // Templates
     const txtWaTemplate = document.getElementById('txt-wa-template');
     const txtEmailTemplate = document.getElementById('txt-email-template');
     const txtEmailSubject = document.getElementById('txt-email-subject');
     const txtEmailCc = document.getElementById('txt-email-cc');
     const btnSaveTemplates = document.getElementById('btn-save-templates');
-    
+
     // Settings Form
     const settingsForm = document.getElementById('settings-form');
     const whatsappSenderNum = document.getElementById('whatsapp-sender-num');
     const gmailSenderId = document.getElementById('gmail-sender-id');
+    const gmailAppPassword = document.getElementById('gmail-app-password');
+    const btnVerifyEmail = document.getElementById('btn-verify-email');
+    const verifyEmailStatus = document.getElementById('verify-email-status');
     const toggleAttachment = document.getElementById('toggle-attachment');
     const toggleMl = document.getElementById('toggle-ml');
     const minDelay = document.getElementById('min-delay');
     const maxDelay = document.getElementById('max-delay');
     const btnSaveSettings = document.getElementById('btn-save-settings');
     const activePdfName = document.getElementById('active-pdf-name');
-    
+
     // Terminal Log
     const logTerminal = document.getElementById('log-terminal');
     const btnClearLogs = document.getElementById('btn-clear-logs');
-    
+
     // File upload elements
     const dropZoneContacts = document.getElementById('drop-zone-contacts');
     const inputContactsFile = document.getElementById('input-contacts-file');
@@ -75,31 +78,50 @@ document.addEventListener('DOMContentLoaded', () => {
     // Contacts state
     let allContacts = [];
     let contactsColumns = [];
+    let verifiedEmailResults = {};
 
 
 
     // Dashboard confirmation elements
-    const dashboardLoginConfirm      = document.getElementById('dashboard-login-confirm');
+    const dashboardLoginConfirm = document.getElementById('dashboard-login-confirm');
     const dashboardLoginConfirmLabel = document.getElementById('dashboard-login-confirm-label');
     const btnDashboardConfirmWhatsapp = document.getElementById('btn-dashboard-confirm-whatsapp');
-    const btnDashboardConfirmGmail    = document.getElementById('btn-dashboard-confirm-gmail');
+    const btnDashboardConfirmGmail = document.getElementById('btn-dashboard-confirm-gmail');
 
     // Logs confirmation elements
-    const logsLoginConfirm      = document.getElementById('logs-login-confirm');
+    const logsLoginConfirm = document.getElementById('logs-login-confirm');
     const logsLoginConfirmLabel = document.getElementById('logs-login-confirm-label');
     const btnLogsConfirmWhatsapp = document.getElementById('btn-logs-confirm-whatsapp');
-    const btnLogsConfirmGmail    = document.getElementById('btn-logs-confirm-gmail');
+    const btnLogsConfirmGmail = document.getElementById('btn-logs-confirm-gmail');
+
+    // Remote browser DOM elements
+    const remoteBrowserContainer = document.getElementById('remote-browser-container');
+    const remoteBrowserTitle = document.getElementById('remote-browser-title');
+    const remoteBrowserScreenshot = document.getElementById('remote-browser-screenshot');
+    const remoteBrowserSpinner = document.getElementById('remote-browser-spinner');
+    const remoteBrowserText = document.getElementById('remote-browser-text');
+    const btnRemoteSendText = document.getElementById('btn-remote-send-text');
+    const btnRemoteKeyEnter = document.getElementById('btn-remote-key-enter');
+    const btnRemoteKeyTab = document.getElementById('btn-remote-key-tab');
+    const btnRemoteKeyBackspace = document.getElementById('btn-remote-key-backspace');
+    const btnRemoteKeyEscape = document.getElementById('btn-remote-key-escape');
+    const btnRemoteRefresh = document.getElementById('btn-remote-refresh');
+    const remoteBrowserUrl = document.getElementById('remote-browser-url');
+    const btnRemoteNavigate = document.getElementById('btn-remote-navigate');
+
+    let currentRemoteService = null;
+    let remoteScreenshotInterval = null;
 
     // --- VIEW NAVIGATION CONTROLLER ---
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
             const targetId = item.getAttribute('href').substring(1);
-            
+
             // Toggle active menu class
             navItems.forEach(nav => nav.classList.remove('active'));
             item.classList.add('active');
-            
+
             // Toggle active content tab view
             tabViews.forEach(view => {
                 view.classList.remove('active-view');
@@ -110,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 targetView.classList.add('active-view');
                 targetView.style.display = 'block';
             }
-            
+
             // Update page headers dynamically
             const titleMap = {
                 'dashboard': ['Dashboard Overview', 'Real-time stats and control center'],
@@ -121,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'logs': ['Terminal Output Stream', 'Monitor Selenium automation outputs in real-time'],
                 'history': ['Sent Email Tracker', 'Track which logged-in account has sent which email']
             };
-            
+
             pageTitle.innerText = titleMap[targetId] ? titleMap[targetId][0] : 'Bulk Sender';
             pageSubtitle.innerText = titleMap[targetId] ? titleMap[targetId][1] : '';
 
@@ -140,14 +162,14 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/status');
             const data = await response.json();
-            
+
             isSendingState = data.is_sending;
-            
+
             // Update System Status badge
             if (isSendingState) {
                 globalStatusBadge.className = 'status-indicator sending';
                 globalStatusText.innerText = 'Sending Batch...';
-                
+
                 // Toggle dispatch buttons state
                 btnStart.disabled = true;
                 btnStop.disabled = false;
@@ -156,32 +178,32 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 globalStatusBadge.className = 'status-indicator idle';
                 globalStatusText.innerText = 'System Idle';
-                
+
                 btnStart.disabled = false;
                 btnStop.disabled = true;
                 btnDispatchLaunch.disabled = false;
                 btnDispatchLaunch.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Launch Sending Process';
             }
-            
+
             // Update Browser Connected status
             updateBrowserStatusBadge(statusWhatsappBrowser, sessionStatusWa, data.whatsapp_browser_active);
             updateBrowserStatusBadge(statusGmailBrowser, sessionStatusGm, data.gmail_browser_active);
-            
+
             // Update Progress Details
             const progress = data.progress;
             const currentCount = progress.current;
             const totalCount = progress.total;
             const percentage = totalCount > 0 ? Math.round((currentCount / totalCount) * 100) : 0;
-            
+
             progressBar.style.width = `${percentage}%`;
             progressPercent.innerText = `${percentage}%`;
             progressRatio.innerText = `${currentCount} / ${totalCount} processed`;
-            
+
             // Update stats cards
             statTotal.innerText = totalCount;
             statWhatsapp.innerText = progress.whatsapp_success;
             statEmail.innerText = progress.email_success;
-            
+
             // Update active contact dashboard details
             if (isSendingState && progress.name) {
                 activeContactPanel.style.display = 'block';
@@ -191,17 +213,17 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (!isSendingState) {
                 // Keep info displayed if completed or hide it
             }
-            
+
             // Update login confirm banner visibility
             if (data.login_status) {
                 updateLoginConfirmBanner(data.login_status);
             }
-            
+
         } catch (error) {
             console.error('Error fetching status:', error);
         }
     };
-    
+
     // Status badge utility
     const updateBrowserStatusBadge = (badgeElem, textElem, isActive) => {
         if (isActive) {
@@ -221,10 +243,109 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // --- REMOTE BROWSER CONTROLLER ---
+    const showRemoteBrowser = (service) => {
+        if (currentRemoteService === service) return;
+        currentRemoteService = service;
+        if (remoteBrowserTitle) {
+            remoteBrowserTitle.innerText = service === 'whatsapp' ? 'WhatsApp' : 'Gmail';
+        }
+        if (remoteBrowserContainer) {
+            remoteBrowserContainer.style.display = 'block';
+        }
+
+        // Start polling screenshots
+        if (remoteScreenshotInterval) clearInterval(remoteScreenshotInterval);
+        refreshRemoteScreenshot();
+        remoteScreenshotInterval = setInterval(refreshRemoteScreenshot, 2000);
+    };
+
+    const hideRemoteBrowser = () => {
+        currentRemoteService = null;
+        if (remoteScreenshotInterval) {
+            clearInterval(remoteScreenshotInterval);
+            remoteScreenshotInterval = null;
+        }
+        if (remoteBrowserContainer) {
+            remoteBrowserContainer.style.display = 'none';
+        }
+        if (remoteBrowserScreenshot) {
+            remoteBrowserScreenshot.src = '';
+        }
+    };
+
+    const refreshRemoteScreenshot = () => {
+        if (!currentRemoteService) return;
+        if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'flex';
+
+        const tempImg = new Image();
+        tempImg.onload = () => {
+            if (remoteBrowserScreenshot) {
+                remoteBrowserScreenshot.src = tempImg.src;
+            }
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'none';
+        };
+        tempImg.onerror = () => {
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'none';
+        };
+        tempImg.src = `/api/screenshot/${currentRemoteService}?t=${Date.now()}`;
+    };
+
+    const sendRemoteClick = async (x, y, width, height) => {
+        if (!currentRemoteService) return;
+        try {
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'flex';
+            const response = await fetch(`/api/click/${currentRemoteService}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ x, y, width, height })
+            });
+            await response.json();
+            setTimeout(refreshRemoteScreenshot, 600);
+        } catch (error) {
+            console.error('Error sending remote click:', error);
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'none';
+        }
+    };
+
+    const sendRemoteKeys = async (text, key = '') => {
+        if (!currentRemoteService) return;
+        try {
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'flex';
+            const response = await fetch(`/api/send-keys/${currentRemoteService}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, key })
+            });
+            await response.json();
+            setTimeout(refreshRemoteScreenshot, 600);
+        } catch (error) {
+            console.error('Error sending remote keys:', error);
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'none';
+        }
+    };
+
+    const sendRemoteNavigation = async (url) => {
+        if (!currentRemoteService) return;
+        try {
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'flex';
+            const response = await fetch(`/api/navigate/${currentRemoteService}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            await response.json();
+            setTimeout(refreshRemoteScreenshot, 1000);
+        } catch (error) {
+            console.error('Error sending remote navigation:', error);
+            if (remoteBrowserSpinner) remoteBrowserSpinner.style.display = 'none';
+        }
+    };
+
     // --- LOGIN CONFIRM BANNER CONTROLLER ---
     const updateLoginConfirmBanner = (loginStatus) => {
         const waWaiting = loginStatus.whatsapp === 'waiting' || loginStatus.whatsapp === 'confirmed';
-        const gmWaiting = loginStatus.gmail === 'waiting'    || loginStatus.gmail === 'confirmed';
+        const gmWaiting = loginStatus.gmail === 'waiting' || loginStatus.gmail === 'confirmed';
         const anyWaiting = waWaiting || gmWaiting;
 
         // Show or hide the banners across pages
@@ -233,15 +354,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (logsLoginConfirm) logsLoginConfirm.style.display = displayStyle;
 
         if (!anyWaiting) {
+            hideRemoteBrowser();
             return;
         }
 
-        // Auto-navigate to Logs tab only if user is not on Dashboard or Logs already
+        if (loginStatus.whatsapp === 'waiting') {
+            showRemoteBrowser('whatsapp');
+        } else if (loginStatus.gmail === 'waiting') {
+            showRemoteBrowser('gmail');
+        } else {
+            hideRemoteBrowser();
+        }
+
+        // Auto-navigate to Logs tab only if user is not on Dashboard, Logs, or Sessions already
         const activeView = document.querySelector('.tab-view.active-view');
         const activeId = activeView ? activeView.id : '';
-        if (activeId !== 'view-dashboard' && activeId !== 'view-logs') {
+        if (activeId !== 'view-dashboard' && activeId !== 'view-logs' && activeId !== 'view-sessions') {
             const logsNavBtn = document.getElementById('nav-logs');
-            const logsView   = document.getElementById('view-logs');
+            const logsView = document.getElementById('view-logs');
             if (logsView && !logsView.classList.contains('active-view')) {
                 logsNavBtn && logsNavBtn.click();
             }
@@ -323,17 +453,17 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/logs');
             const data = await response.json();
-            
+
             const newLogs = data.logs || [];
-            
+
             // Check if there are new logs to draw
             if (newLogs.length > loggedLogs.length) {
                 const logsToAppend = newLogs.slice(loggedLogs.length);
-                
+
                 logsToAppend.forEach(line => {
                     const logElem = document.createElement('div');
                     logElem.className = 'log-line';
-                    
+
                     // Style special system lines
                     if (line.includes('❌') || line.toLowerCase().includes('error')) {
                         logElem.classList.add('error');
@@ -342,11 +472,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (line.includes('✅') || line.includes('[SYSTEM]')) {
                         logElem.classList.add('system');
                     }
-                    
+
                     logElem.innerText = line;
                     logTerminal.appendChild(logElem);
                 });
-                
+
                 // Keep terminal scrolled to bottom
                 logTerminal.scrollTop = logTerminal.scrollHeight;
                 loggedLogs = newLogs;
@@ -362,25 +492,26 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/settings');
             const data = await response.json();
-            
+
             const config = data.config || {};
-            
+
             // Map settings values to form elements
             whatsappSenderNum.value = config.whatsapp_sender || '';
             gmailSenderId.value = config.gmail_sender || '';
+            if (gmailAppPassword) gmailAppPassword.value = config.gmail_app_password || '';
             toggleAttachment.checked = config.send_with_attachment !== false;
             toggleMl.checked = config.use_ml_optimization !== false;
             minDelay.value = config.min_wait_seconds || 60;
             maxDelay.value = config.max_wait_seconds || 60;
-            
+
             activePdfName.innerText = config.attachment_path || 'None';
-            
+
             // Set message templates textareas
             txtWaTemplate.value = data.whatsapp_template || '';
             txtEmailTemplate.value = data.email_template || '';
             if (txtEmailSubject) txtEmailSubject.value = data.email_subject || '';
             if (txtEmailCc) txtEmailCc.value = data.email_cc || '';
-            
+
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -391,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             btnSaveTemplates.disabled = true;
             btnSaveTemplates.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
-            
+
             // Read templates text from textareas
             const payload = {
                 'whatsapp_template': txtWaTemplate.value,
@@ -399,14 +530,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 'email_subject': txtEmailSubject ? txtEmailSubject.value : '',
                 'email_cc': txtEmailCc ? txtEmailCc.value : ''
             };
-            
+
             // Reuse post settings endpoint to save templates
             const response = await fetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            
+
             const result = await response.json();
             if (result.success) {
                 alert('Templates updated successfully!');
@@ -426,22 +557,23 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             btnSaveSettings.disabled = true;
             btnSaveSettings.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Applying...';
-            
+
             const payload = {
                 'whatsapp_sender': whatsappSenderNum.value,
                 'gmail_sender': gmailSenderId.value,
+                'gmail_app_password': gmailAppPassword ? gmailAppPassword.value : '',
                 'send_with_attachment': toggleAttachment.checked,
                 'use_ml_optimization': toggleMl.checked,
                 'min_wait_seconds': parseInt(minDelay.value) || 60,
                 'max_wait_seconds': parseInt(maxDelay.value) || 60
             };
-            
+
             const response = await fetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            
+
             const result = await response.json();
             if (result.success) {
                 alert('Settings applied successfully!');
@@ -457,25 +589,141 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    if (btnVerifyEmail) {
+        btnVerifyEmail.addEventListener('click', async () => {
+            try {
+                btnVerifyEmail.disabled = true;
+                btnVerifyEmail.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+                if (verifyEmailStatus) {
+                    verifyEmailStatus.style.color = '#888';
+                    verifyEmailStatus.innerText = 'Connecting to Gmail SMTP...';
+                }
+
+                const payload = {
+                    'gmail_sender': gmailSenderId.value,
+                    'gmail_app_password': gmailAppPassword ? gmailAppPassword.value : ''
+                };
+
+                const response = await fetch('/api/verify-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (verifyEmailStatus) {
+                    if (result.success) {
+                        verifyEmailStatus.style.color = '#2ecc71';
+                        verifyEmailStatus.innerText = '✅ Connection successful!';
+                    } else {
+                        verifyEmailStatus.style.color = '#e74c3c';
+                        verifyEmailStatus.innerText = `❌ ${result.error || 'Failed'}`;
+                    }
+                }
+            } catch (error) {
+                if (verifyEmailStatus) {
+                    verifyEmailStatus.style.color = '#e74c3c';
+                    verifyEmailStatus.innerText = `❌ Error: ${error.message}`;
+                }
+            } finally {
+                btnVerifyEmail.disabled = false;
+                btnVerifyEmail.innerHTML = '<i class="fa-solid fa-plug-circle-check"></i> Verify Email Connection';
+            }
+        });
+    }
+
     // --- CHROMEDRIVER / LOGIN ACTIONS ---
     btnLoginWhatsapp.addEventListener('click', () => triggerLogin('whatsapp', btnLoginWhatsapp));
     btnLoginGmail.addEventListener('click', () => triggerLogin('gmail', btnLoginGmail));
+
+    // --- REMOTE BROWSER EVENT BINDINGS ---
+    if (remoteBrowserScreenshot) {
+        remoteBrowserScreenshot.addEventListener('click', (e) => {
+            const rect = remoteBrowserScreenshot.getBoundingClientRect();
+            const x = Math.round(e.clientX - rect.left);
+            const y = Math.round(e.clientY - rect.top);
+            const width = Math.round(rect.width);
+            const height = Math.round(rect.height);
+            sendRemoteClick(x, y, width, height);
+        });
+    }
+
+    if (btnRemoteSendText) {
+        btnRemoteSendText.addEventListener('click', () => {
+            const text = remoteBrowserText.value;
+            if (text) {
+                sendRemoteKeys(text);
+                remoteBrowserText.value = '';
+            }
+        });
+    }
+
+    if (remoteBrowserText) {
+        remoteBrowserText.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnRemoteSendText.click();
+            }
+        });
+    }
+
+    if (btnRemoteKeyEnter) {
+        btnRemoteKeyEnter.addEventListener('click', () => sendRemoteKeys('', 'Enter'));
+    }
+    if (btnRemoteKeyTab) {
+        btnRemoteKeyTab.addEventListener('click', () => sendRemoteKeys('', 'Tab'));
+    }
+    if (btnRemoteKeyBackspace) {
+        btnRemoteKeyBackspace.addEventListener('click', () => sendRemoteKeys('', 'Backspace'));
+    }
+    if (btnRemoteKeyEscape) {
+        btnRemoteKeyEscape.addEventListener('click', () => sendRemoteKeys('', 'Escape'));
+    }
+    if (btnRemoteRefresh) {
+        btnRemoteRefresh.addEventListener('click', refreshRemoteScreenshot);
+    }
+    if (btnRemoteNavigate) {
+        btnRemoteNavigate.addEventListener('click', () => {
+            const url = remoteBrowserUrl.value;
+            if (url) {
+                sendRemoteNavigation(url);
+            }
+        });
+    }
+    if (remoteBrowserUrl) {
+        remoteBrowserUrl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnRemoteNavigate.click();
+            }
+        });
+    }
+    document.querySelectorAll('.quick-url-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const url = link.getAttribute('data-url');
+            if (url) {
+                if (remoteBrowserUrl) remoteBrowserUrl.value = url;
+                sendRemoteNavigation(url);
+            }
+        });
+    });
 
     const triggerLogin = async (service, buttonElem) => {
         try {
             buttonElem.disabled = true;
             const origHTML = buttonElem.innerHTML;
             buttonElem.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching Chrome...';
-            
+
             const response = await fetch(`/api/login/${service}`, { method: 'POST' });
             const result = await response.json();
-            
+
             if (result.success) {
-                alert(`Chrome launched successfully for ${service}! Follow the steps in the browser window to log in.`);
+                alert(`Chrome launched successfully for ${service}! Scroll down to the 'Remote Server Browser View' to complete your login.`);
             } else {
                 alert(`Error launching driver: ${result.error}`);
             }
-            
+
             buttonElem.disabled = false;
             buttonElem.innerHTML = origHTML;
         } catch (error) {
@@ -493,7 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ choice: choiceVal })
             });
             const result = await response.json();
-            
+
             if (result.success) {
                 // Switch view to logs automatically so user can watch the progress
                 document.getElementById('nav-logs').click();
@@ -504,11 +752,11 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`Error: ${error.message}`);
         }
     };
-    
+
     // Bind starts
     btnStart.addEventListener('click', () => startDispatch(messagingMode.value));
     btnDispatchLaunch.addEventListener('click', () => startDispatch(messagingMode.value));
-    
+
     // Bind stop
     btnStop.addEventListener('click', async () => {
         try {
@@ -526,7 +774,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btnStop.innerHTML = '<i class="fa-solid fa-stop"></i> Stop';
         }
     });
-    
+
     // Clear console log
     btnClearLogs.addEventListener('click', () => {
         logTerminal.innerHTML = '<div class="log-line system">[SYSTEM] Console logger cleared. Output logs will resume...</div>';
@@ -538,7 +786,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         e.currentTarget.classList.add('dragover');
     };
-    
+
     const handleDragLeave = (e) => {
         e.currentTarget.classList.remove('dragover');
     };
@@ -574,14 +822,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // File Uploader handler
     const handleFileUpload = async (file, type) => {
         if (!file) return;
-        
+
         const formData = new FormData();
         formData.append('file', file);
-        
+
         const dropZone = type === 'contacts' ? dropZoneContacts : dropZoneAttachment;
         const origHTML = dropZone.innerHTML;
         dropZone.innerHTML = `<i class="fa-solid fa-spinner fa-spin drop-icon"></i><p>Uploading <strong>${file.name}</strong>...</p>`;
-        
+
         try {
             const url = type === 'contacts' ? '/api/upload/contacts' : '/api/upload/attachment';
             const response = await fetch(url, {
@@ -589,10 +837,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: formData
             });
             const result = await response.json();
-            
+
             if (result.success) {
-                alert(`Upload Successful: ${file.name}`);
-                if (type === 'attachment') {
+                if (type === 'contacts') {
+                    verifiedEmailResults = {};
+                    const rowCount = result.rows ? ` (${result.rows} contacts imported)` : '';
+                    alert(`✅ Upload Successful: ${file.name}${rowCount}\n\nColumns auto-mapped → Name, Phone, Email.\nNavigating to Contacts tab...`);
+                    // Auto-navigate to Contacts tab and reload the list
+                    const navContacts = document.getElementById('nav-contacts');
+                    if (navContacts) navContacts.click();
+                } else {
+                    alert(`Upload Successful: ${file.name}`);
                     activePdfName.innerText = file.name;
                 }
             } else {
@@ -608,6 +863,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CONTACTS TABLE CONTROLLER ---
     const contactsSearch = document.getElementById('contacts-search');
     const btnRefreshContacts = document.getElementById('btn-refresh-contacts');
+    const btnVerifyContacts = document.getElementById('btn-verify-contacts');
     const contactsCountBadge = document.getElementById('contacts-count-badge');
     const contactsHeaderMeta = document.getElementById('contacts-header-meta');
     const contactsLoading = document.getElementById('contacts-loading');
@@ -666,9 +922,37 @@ document.addEventListener('DOMContentLoaded', () => {
         const displayCount = contacts.length;
         const totalCount = allContacts.length;
         contactsCountBadge.innerText = `${displayCount} contact${displayCount !== 1 ? 's' : ''}`;
-        contactsHeaderMeta.innerText = displayCount === totalCount
+        
+        let verificationMeta = '';
+        const verifiedKeys = Object.keys(verifiedEmailResults);
+        if (verifiedKeys.length > 0) {
+            let validCount = 0;
+            let invalidCount = 0;
+            
+            allContacts.forEach(contact => {
+                const email = contact.Email || contact.email || '';
+                const emailLower = String(email).trim().toLowerCase();
+                
+                if (!emailLower) {
+                    invalidCount++;
+                } else {
+                    const verification = verifiedEmailResults[emailLower];
+                    if (verification !== undefined && verification.valid) {
+                        validCount++;
+                    } else {
+                        invalidCount++;
+                    }
+                }
+            });
+            
+            verificationMeta = ` (<span style="color: #2ecc71; font-weight: 600;">${validCount} valid</span>, <span style="color: #e74c3c; font-weight: 600;">${invalidCount} invalid</span>)`;
+        }
+
+        const baseText = displayCount === totalCount
             ? `${totalCount} total records`
             : `Showing ${displayCount} of ${totalCount} records`;
+            
+        contactsHeaderMeta.innerHTML = baseText + verificationMeta;
 
         // Build thead
         contactsThead.innerHTML = '';
@@ -713,7 +997,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Add semantic colour chips for phone/email columns
                 const colLower = col.toLowerCase();
                 if (colLower.includes('email') && val.includes('@')) {
-                    td.innerHTML = `<span class="contact-chip chip-email"><i class="fa-solid fa-envelope"></i> ${val}</span>`;
+                    let badge = '';
+                    const verification = verifiedEmailResults[val.toLowerCase()];
+                    if (verification !== undefined) {
+                        if (verification.valid) {
+                            badge = ` <span style="background: rgba(46, 204, 113, 0.1); color: #2ecc71; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 5px; font-weight: 600;"><i class="fa-solid fa-check"></i> Valid</span>`;
+                        } else {
+                            badge = ` <span style="background: rgba(231, 76, 60, 0.1); color: #e74c3c; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 5px; font-weight: 600;" title="${verification.reason}"><i class="fa-solid fa-triangle-exclamation"></i> Invalid</span>`;
+                        }
+                    }
+                    td.innerHTML = `<span class="contact-chip chip-email"><i class="fa-solid fa-envelope"></i> ${val}</span>${badge}`;
                 } else if ((colLower.includes('phone') || colLower.includes('mobile') || colLower.includes('number')) && val) {
                     td.innerHTML = `<span class="contact-chip chip-phone"><i class="fa-solid fa-phone"></i> ${val}</span>`;
                 }
@@ -723,7 +1016,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const tdAction = document.createElement('td');
             tdAction.className = 'col-actions';
-            
+
             const editBtn = document.createElement('button');
             editBtn.className = 'btn-edit-contact';
             editBtn.title = 'Edit this contact';
@@ -772,16 +1065,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const applyContactsSearch = () => {
         const query = (contactsSearch ? contactsSearch.value : '').toLowerCase().trim();
-        if (!query) {
-            renderContactsTable(allContacts);
-            return;
-        }
-        const filtered = allContacts.filter(row => {
-            return contactsColumns.some(col => {
-                const val = row[col] !== undefined ? String(row[col]).toLowerCase() : '';
-                return val.includes(query);
+        const filterVal = document.getElementById('contacts-email-filter')?.value || 'all';
+
+        let filtered = allContacts;
+
+        // 1. Apply text search query
+        if (query) {
+            filtered = filtered.filter(row => {
+                return contactsColumns.some(col => {
+                    const val = row[col] !== undefined ? String(row[col]).toLowerCase() : '';
+                    return val.includes(query);
+                });
             });
-        });
+        }
+
+        // 2. Apply email status filter (valid / invalid)
+        if (filterVal !== 'all') {
+            filtered = filtered.filter(contact => {
+                const email = contact.Email || contact.email || '';
+                const emailLower = String(email).trim().toLowerCase();
+                
+                if (!emailLower) {
+                    return filterVal === 'invalid';
+                }
+                
+                const verification = verifiedEmailResults[emailLower];
+                const isValid = (verification !== undefined && verification.valid);
+                
+                if (filterVal === 'valid') {
+                    return isValid;
+                } else if (filterVal === 'invalid') {
+                    return !isValid;
+                }
+                return true;
+            });
+        }
+
         renderContactsTable(filtered);
     };
 
@@ -789,10 +1108,59 @@ document.addEventListener('DOMContentLoaded', () => {
         contactsSearch.addEventListener('input', applyContactsSearch);
     }
 
+    const contactsEmailFilter = document.getElementById('contacts-email-filter');
+    if (contactsEmailFilter) {
+        contactsEmailFilter.addEventListener('change', applyContactsSearch);
+    }
+
     if (btnRefreshContacts) {
         btnRefreshContacts.addEventListener('click', () => {
             if (contactsSearch) contactsSearch.value = '';
+            if (contactsEmailFilter) contactsEmailFilter.value = 'all';
             loadContacts();
+        });
+    }
+
+    if (btnVerifyContacts) {
+        btnVerifyContacts.addEventListener('click', async () => {
+            try {
+                btnVerifyContacts.disabled = true;
+                const originalHTML = btnVerifyContacts.innerHTML;
+                btnVerifyContacts.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+
+                const response = await fetch('/api/verify-recipient-emails', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Store results in verifiedEmailResults
+                    verifiedEmailResults = {};
+                    result.results.forEach(res => {
+                        if (res.email) {
+                            verifiedEmailResults[res.email.toLowerCase()] = {
+                                valid: res.valid,
+                                reason: res.reason
+                            };
+                        }
+                    });
+
+                    // Re-render the contacts table
+                    renderContactsTable(allContacts);
+
+                    const totalVerified = result.results.length;
+                    const validCount = result.results.filter(r => r.valid).length;
+                    alert(`Verification complete! Checked ${totalVerified} emails.\nValid: ${validCount}\nInvalid: ${totalVerified - validCount}`);
+                } else {
+                    alert(`Error verifying emails: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Network error verifying emails: ${error.message}`);
+            } finally {
+                btnVerifyContacts.disabled = false;
+                btnVerifyContacts.innerHTML = '<i class="fa-solid fa-envelope-circle-check"></i> Verify Emails';
+            }
         });
     }
 
@@ -808,9 +1176,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const openAddContactModal = () => {
         if (!modalAddContact || !dynamicContactFields) return;
 
-        const fieldsToRender = (contactsColumns && contactsColumns.length > 0)
-            ? contactsColumns
-            : ['Name', 'Email', 'Phone'];
+        // Always use the 3 canonical columns
+        const fieldsToRender = ['Name', 'Phone', 'Email'];
 
         dynamicContactFields.innerHTML = '';
         fieldsToRender.forEach(col => {
@@ -826,7 +1193,9 @@ document.addEventListener('DOMContentLoaded', () => {
             input.className = 'form-control';
             input.id = `input-contact-${col.toLowerCase().replace(/\s+/g, '-')}`;
             input.name = col;
-            input.placeholder = `Enter ${col}...`;
+            input.placeholder = col === 'Name' ? 'Full name or company name...'
+                : col === 'Phone' ? '+91XXXXXXXXXX...'
+                    : 'email@example.com';
 
             formGroup.appendChild(label);
             formGroup.appendChild(input);
@@ -913,9 +1282,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!modalEditContact || !dynamicEditContactFields) return;
         editContactRowIndex.value = realIdx;
 
-        const fieldsToRender = (contactsColumns && contactsColumns.length > 0)
-            ? contactsColumns
-            : Object.keys(rowData);
+        // Always use the 3 canonical columns
+        const fieldsToRender = ['Name', 'Phone', 'Email'];
 
         dynamicEditContactFields.innerHTML = '';
         fieldsToRender.forEach(col => {
@@ -1106,11 +1474,18 @@ document.addEventListener('DOMContentLoaded', () => {
         btnRefreshHist.addEventListener('click', loadMailHistory);
     }
 
+    const btnExportHist = document.getElementById('btn-export-history');
+    if (btnExportHist) {
+        btnExportHist.addEventListener('click', () => {
+            window.location.href = '/api/history/export';
+        });
+    }
+
     // --- INITIALIZATION CAMPAIGN ---
     fetchUserInfo();
     loadSettings();
     updateLivePreview();
-    
+
     // Status polling intervals
     setInterval(fetchStatus, 1000);
     setInterval(fetchLogs, 1000);

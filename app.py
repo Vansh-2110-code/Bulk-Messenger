@@ -9,6 +9,54 @@ import pandas as pd
 from flask import Flask, request, jsonify, render_template, send_from_directory, send_file, session, redirect, url_for
 from werkzeug.utils import secure_filename
 
+
+# --- COLUMN NORMALIZATION HELPER ---
+# Maps any Excel column to a canonical Name / Phone / Email field.
+_NAME_KEYWORDS   = ['name', 'company', 'organisation', 'organization', 'firm', 'client', 'customer', 'contact']
+_PHONE_KEYWORDS  = ['phone', 'mobile', 'cell', 'tel', 'number', 'whatsapp', 'contact no', 'mob']
+_EMAIL_KEYWORDS  = ['email', 'e-mail', 'mail', 'gmail', 'email id', 'mail id', 'emailid', 'mailid']
+
+def _best_match(col_lower, keywords):
+    """Return True if col_lower starts-with or contains any keyword."""
+    for kw in keywords:
+        if col_lower == kw or col_lower.startswith(kw) or kw in col_lower:
+            return True
+    return False
+
+def normalize_contacts_df(df):
+    """
+    Given a DataFrame with arbitrary column names, produce a new DataFrame
+    with exactly three columns: Name, Phone, Email.
+    Columns are auto-detected by keyword matching; unrecognised columns are dropped.
+    """
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    name_col  = None
+    phone_col = None
+    email_col = None
+
+    for col in df.columns:
+        cl = col.lower()
+        if email_col is None and _best_match(cl, _EMAIL_KEYWORDS):
+            email_col = col
+        elif name_col is None and _best_match(cl, _NAME_KEYWORDS):
+            name_col = col
+        elif phone_col is None and _best_match(cl, _PHONE_KEYWORDS):
+            phone_col = col
+
+    # Build output with only the 3 standard columns
+    result = pd.DataFrame()
+    result['Name']  = df[name_col].fillna('')  if name_col  else ''
+    result['Phone'] = df[phone_col].fillna('') if phone_col else ''
+    result['Email'] = df[email_col].fillna('') if email_col else ''
+
+    # Stringify everything so JSON serialisation is safe
+    for col in result.columns:
+        result[col] = result[col].astype(str).replace('nan', '').replace('None', '')
+
+    return result
+
 # Add current path to sys.path so we can import local modules
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -246,6 +294,52 @@ def get_mail_history():
     return jsonify({'success': True, 'emails': emails})
 
 
+@app.route('/api/history/export', methods=['GET'])
+@login_required
+def export_history():
+    """Export sent emails history as an Excel file."""
+    username = session.get('username')
+    emails = db_manager.get_user_sent_emails(username=username, limit=5000)
+    
+    if not emails:
+        return jsonify({'error': 'No sent email records to export'}), 400
+        
+    try:
+        import io
+        df = pd.DataFrame(emails)
+        
+        column_mapping = {
+            'username': 'Username',
+            'sender_email': 'Sender Email',
+            'recipient_name': 'Recipient Name',
+            'recipient_email': 'Recipient Email',
+            'subject': 'Subject',
+            'status': 'Status',
+            'error_message': 'Error Message',
+            'timestamp': 'Timestamp'
+        }
+        df = df.rename(columns=column_mapping)
+        
+        cols_order = ['Timestamp', 'Username', 'Sender Email', 'Recipient Name', 'Recipient Email', 'Subject', 'Status', 'Error Message']
+        existing_cols = [c for c in cols_order if c in df.columns]
+        df = df[existing_cols]
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sent Emails History')
+        output.seek(0)
+        
+        filename = f"sent_emails_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    except Exception as e:
+        return jsonify({'error': f"Failed to generate Excel file: {str(e)}"}), 500
+
+
 @app.route('/api/status', methods=['GET'])
 def get_status():
     # Check if browsers are still alive
@@ -298,9 +392,13 @@ def launch_login(service):
                 with lock:
                     state['login_status']['whatsapp'] = 'waiting'
                     state['login_confirmed']['whatsapp'] = False
+                def set_wa_drv(d):
+                    with lock:
+                        state['whatsapp_driver'] = d
                 try:
                     drv = bulk_messenger.init_whatsapp_driver(
-                        confirm_check=check_whatsapp_confirmed
+                        confirm_check=check_whatsapp_confirmed,
+                        on_driver_created=set_wa_drv
                     )
                     with lock:
                         state['whatsapp_driver'] = drv
@@ -318,9 +416,13 @@ def launch_login(service):
                 with lock:
                     state['login_status']['gmail'] = 'waiting'
                     state['login_confirmed']['gmail'] = False
+                def set_gm_drv(d):
+                    with lock:
+                        state['gmail_driver'] = d
                 try:
                     drv = bulk_messenger.init_gmail_driver(
-                        confirm_check=check_gmail_confirmed
+                        confirm_check=check_gmail_confirmed,
+                        on_driver_created=set_gm_drv
                     )
                     with lock:
                         state['gmail_driver'] = drv
@@ -349,6 +451,133 @@ def confirm_login(service):
         state['login_status'][service] = 'confirmed'
     print(f"✅ [{service.title()}] Login manually confirmed by user.")
     return jsonify({'success': f'{service} login confirmed'})
+
+
+@app.route('/api/screenshot/<service>', methods=['GET'])
+def get_screenshot(service):
+    if service not in ['whatsapp', 'gmail']:
+        return jsonify({'error': 'Invalid service'}), 400
+    try:
+        driver = None
+        with lock:
+            if service == 'whatsapp':
+                driver = state['whatsapp_driver']
+            elif service == 'gmail':
+                driver = state['gmail_driver']
+        
+        if driver and actions.is_browser_alive(driver):
+            screenshot_bin = driver.get_screenshot_as_png()
+            import io
+            return send_file(io.BytesIO(screenshot_bin), mimetype='image/png')
+        else:
+            return jsonify({'error': 'Driver not active'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/click/<service>', methods=['POST'])
+def click_coordinates(service):
+    if service not in ['whatsapp', 'gmail']:
+        return jsonify({'error': 'Invalid service'}), 400
+    try:
+        data = request.json
+        x = int(data.get('x', 0))
+        y = int(data.get('y', 0))
+        img_width = int(data.get('width', 1))
+        img_height = int(data.get('height', 1))
+        
+        driver = None
+        with lock:
+            if service == 'whatsapp':
+                driver = state['whatsapp_driver']
+            elif service == 'gmail':
+                driver = state['gmail_driver']
+                
+        if driver and actions.is_browser_alive(driver):
+            # Scale coordinates
+            window_size = driver.get_window_size()
+            win_width = window_size['width']
+            win_height = window_size['height']
+            
+            scaled_x = int((x / img_width) * win_width)
+            scaled_y = int((y / img_height) * win_height)
+            
+            # Click via JS
+            click_js = """
+            var el = document.elementFromPoint(arguments[0], arguments[1]);
+            if (el) {
+                el.click();
+                if (el.focus) { el.focus(); }
+                return true;
+            }
+            return false;
+            """
+            success = driver.execute_script(click_js, scaled_x, scaled_y)
+            return jsonify({'success': success, 'x': scaled_x, 'y': scaled_y})
+        return jsonify({'error': 'Driver not active'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/send-keys/<service>', methods=['POST'])
+def send_keys(service):
+    if service not in ['whatsapp', 'gmail']:
+        return jsonify({'error': 'Invalid service'}), 400
+    try:
+        data = request.json
+        text = data.get('text', '')
+        special_key = data.get('key', '')
+        
+        driver = None
+        with lock:
+            if service == 'whatsapp':
+                driver = state['whatsapp_driver']
+            elif service == 'gmail':
+                driver = state['gmail_driver']
+                
+        if driver and actions.is_browser_alive(driver):
+            active_element = driver.switch_to.active_element
+            if special_key:
+                from selenium.webdriver.common.keys import Keys
+                if special_key == 'Enter':
+                    active_element.send_keys(Keys.ENTER)
+                elif special_key == 'Tab':
+                    active_element.send_keys(Keys.TAB)
+                elif special_key == 'Backspace':
+                    active_element.send_keys(Keys.BACKSPACE)
+                elif special_key == 'Escape':
+                    active_element.send_keys(Keys.ESCAPE)
+            else:
+                active_element.send_keys(text)
+            return jsonify({'success': True})
+        return jsonify({'error': 'Driver not active'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/navigate/<service>', methods=['POST'])
+def navigate_to_url(service):
+    if service not in ['whatsapp', 'gmail']:
+        return jsonify({'error': 'Invalid service'}), 400
+    try:
+        data = request.json
+        url = data.get('url', '')
+        if not url:
+            return jsonify({'error': 'URL is required'}), 400
+            
+        driver = None
+        with lock:
+            if service == 'whatsapp':
+                driver = state['whatsapp_driver']
+            elif service == 'gmail':
+                driver = state['gmail_driver']
+                
+        if driver and actions.is_browser_alive(driver):
+            driver.get(url)
+            return jsonify({'success': True})
+        return jsonify({'error': 'Driver not active'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/start', methods=['POST'])
@@ -460,6 +689,8 @@ def handle_settings():
             cfg['whatsapp_sender'] = data['whatsapp_sender']
         if 'gmail_sender' in data:
             cfg['gmail_sender'] = data['gmail_sender']
+        if 'gmail_app_password' in data:
+            cfg['gmail_app_password'] = data['gmail_app_password']
         if 'use_ml_optimization' in data:
             cfg['use_ml_optimization'] = data['use_ml_optimization']
         if 'min_wait_seconds' in data:
@@ -480,6 +711,84 @@ def handle_settings():
             json.dump(cfg, f, indent=4)
             
         return jsonify({'success': 'Settings updated successfully'})
+
+
+@app.route('/api/verify-email', methods=['POST'])
+def verify_email_connection():
+    try:
+        data = request.json or {}
+        sender_email = data.get('gmail_sender', '')
+        app_password = data.get('gmail_app_password', '')
+        
+        # Fallback to config.json if not provided
+        if not sender_email or not app_password:
+            config_path = 'config.json'
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    cfg = json.load(f)
+                sender_email = sender_email or cfg.get('gmail_sender', '')
+                app_password = app_password or cfg.get('gmail_app_password', '')
+                
+        if not sender_email or not app_password:
+            return jsonify({'error': 'Gmail ID or App Password is not provided'}), 400
+            
+        import smtplib
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender_email, app_password)
+        server.quit()
+        
+        return jsonify({'success': 'Email connection verified successfully!'})
+    except Exception as e:
+        return jsonify({'error': f'Verification failed: {str(e)}'}), 500
+
+
+@app.route('/api/verify-recipient-emails', methods=['POST'])
+def verify_recipient_emails():
+    excel_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
+    if not os.path.exists(excel_path):
+        return jsonify({'error': 'No contacts Excel list uploaded yet'}), 400
+        
+    try:
+        df = pd.read_excel(excel_path)
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        email_col = None
+        for col in df.columns:
+            if col.lower() == 'email':
+                email_col = col
+                break
+                
+        if not email_col:
+            return jsonify({'error': "Contacts list does not contain an 'Email' column"}), 400
+            
+        import verify_emails
+        results = []
+        for index, row in df.iterrows():
+            email_val = str(row[email_col]).strip() if not pd.isna(row[email_col]) else ''
+            name_val = str(row.get('Name', row.get('name', f'Row {index + 1}'))).strip()
+            
+            if not email_val:
+                results.append({
+                    'index': index,
+                    'name': name_val,
+                    'email': '',
+                    'valid': False,
+                    'reason': 'Email is empty'
+                })
+            else:
+                res = verify_emails.verify_single_email(email_val)
+                results.append({
+                    'index': index,
+                    'name': name_val,
+                    'email': email_val,
+                    'valid': res['valid'],
+                    'reason': res['reason']
+                })
+                
+        return jsonify({'success': True, 'results': results})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 def modify_actions_templates(wa_template, email_template):
@@ -506,17 +815,26 @@ def modify_actions_templates(wa_template, email_template):
 def upload_contacts():
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
-        
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'Empty filename'}), 400
-        
+
     if file and (file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
-        filename = 'contacts.xlsx'  # Overwrite contacts.xlsx
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-        print("✅ Excel contact list uploaded and saved as contacts.xlsx")
-        return jsonify({'success': 'Excel contact list uploaded successfully'})
-        
+        try:
+            # Read raw Excel into DataFrame
+            df_raw = pd.read_excel(file)
+            # Normalize to Name / Phone / Email only
+            df_norm = normalize_contacts_df(df_raw)
+            # Save as canonical contacts.xlsx
+            save_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
+            df_norm.to_excel(save_path, index=False)
+            print(f"✅ Excel uploaded and normalized → {len(df_norm)} rows | columns: Name, Phone, Email")
+            return jsonify({'success': 'Excel contact list uploaded and normalized successfully', 'rows': len(df_norm)})
+        except Exception as e:
+            print(f"❌ Error processing uploaded Excel: {e}")
+            return jsonify({'error': f'Failed to process Excel file: {str(e)}'}), 500
+
     return jsonify({'error': 'Invalid file format. Only Excel files (.xlsx) allowed.'}), 400
 
 
@@ -555,20 +873,18 @@ def upload_attachment():
 
 @app.route('/api/contacts', methods=['GET'])
 def get_contacts():
-    """Return contacts from the active Excel file as JSON."""
+    """Return contacts from the active Excel file as JSON (always Name / Phone / Email)."""
     excel_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
     if not os.path.exists(excel_path):
         return jsonify({'contacts': [], 'columns': [], 'total': 0, 'error': 'contacts.xlsx not found'})
     try:
         df = pd.read_excel(excel_path)
-        # Normalise column names for safe JSON
-        df.columns = [str(c).strip() for c in df.columns]
-        # Replace NaN with empty string so JSON serialisation works
-        df = df.fillna('')
+        # Normalize to the 3 standard columns so the UI always shows Name / Phone / Email
+        df = normalize_contacts_df(df)
         contacts = df.to_dict(orient='records')
         return jsonify({
             'contacts': contacts,
-            'columns': list(df.columns),
+            'columns': list(df.columns),   # Always ['Name', 'Phone', 'Email']
             'total': len(contacts)
         })
     except Exception as e:
@@ -577,21 +893,23 @@ def get_contacts():
 
 @app.route('/api/contacts', methods=['POST'])
 def add_contact():
-    """Add a new contact to contacts.xlsx."""
+    """Add a new contact to contacts.xlsx (always uses Name / Phone / Email columns)."""
     excel_path = os.path.join(app.config['UPLOAD_FOLDER'], 'contacts.xlsx')
     data = request.json or {}
     try:
         if os.path.exists(excel_path):
             df = pd.read_excel(excel_path)
-            df = df.fillna('')
+            df = normalize_contacts_df(df)
         else:
-            df = pd.DataFrame(columns=['Name', 'Email', 'Phone'])
-        
-        # Build new row mapping keys to case insensitive values
-        new_row = {}
-        for col in df.columns:
-            new_row[col] = data.get(col, data.get(col.lower(), ''))
-            
+            df = pd.DataFrame(columns=['Name', 'Phone', 'Email'])
+
+        # Accept incoming keys case-insensitively mapped to standard column names
+        new_row = {
+            'Name':  data.get('Name',  data.get('name',  '')),
+            'Phone': data.get('Phone', data.get('phone', '')),
+            'Email': data.get('Email', data.get('email', '')),
+        }
+
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
         df.to_excel(excel_path, index=False)
         print(f"✅ Added contact: {new_row.get('Name', 'Unknown')} to contacts.xlsx")
@@ -609,15 +927,16 @@ def update_contact(row_index):
     data = request.json or {}
     try:
         df = pd.read_excel(excel_path)
+        df = normalize_contacts_df(df)
         if row_index < 0 or row_index >= len(df):
             return jsonify({'error': 'Row index out of range'}), 400
-        
-        for col in df.columns:
+
+        for col in ['Name', 'Phone', 'Email']:
             if col in data:
                 df.at[row_index, col] = data[col]
             elif col.lower() in data:
                 df.at[row_index, col] = data[col.lower()]
-                
+
         df.to_excel(excel_path, index=False)
         print(f"✅ Updated contact at row {row_index} in contacts.xlsx")
         return jsonify({'success': True})
@@ -642,6 +961,7 @@ def delete_contact(row_index):
         return jsonify({'error': 'contacts.xlsx not found'}), 404
     try:
         df = pd.read_excel(excel_path)
+        df = normalize_contacts_df(df)
         if row_index < 0 or row_index >= len(df):
             return jsonify({'error': 'Row index out of range'}), 400
         df = df.drop(index=row_index).reset_index(drop=True)

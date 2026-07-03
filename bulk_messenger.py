@@ -32,7 +32,7 @@ except ImportError:
 EXCEL_FILE = "contacts.xlsx"
 YOUR_MOBILE_NUMBER = "9993523379"
 YOUR_GMAIL_ID = "[EMAIL_ADDRESS]"
-def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None, on_finished=None):
+def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None, on_finished=None, on_driver_created=None):
     print("\n[WhatsApp] Initializing Chrome browser...")
     options = webdriver.ChromeOptions()
     
@@ -40,13 +40,17 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
     os.makedirs(user_data_dir, exist_ok=True)
     
     # --- FIX: Remove stale Chrome SingletonLock that blocks reuse ---
-    singleton_lock = os.path.join(user_data_dir, "Default", "SingletonLock")
-    if os.path.exists(singleton_lock):
-        try:
-            os.remove(singleton_lock)
-            print("[WhatsApp] Removed stale Chrome profile lock.")
-        except Exception as e:
-            print(f"[WhatsApp] Warning: Could not remove profile lock: {e}")
+    locks = [
+        os.path.join(user_data_dir, "SingletonLock"),
+        os.path.join(user_data_dir, "Default", "SingletonLock")
+    ]
+    for lock_path in locks:
+        if os.path.lexists(lock_path):
+            try:
+                os.remove(lock_path)
+                print(f"[WhatsApp] Removed stale Chrome profile lock: {lock_path}")
+            except Exception as e:
+                print(f"[WhatsApp] Warning: Could not remove profile lock {lock_path}: {e}")
             
     # Use proper path formatting to avoid ERR_INVALID_ARGUMENT
     user_data_dir = os.path.abspath(user_data_dir).replace("\\", "/")
@@ -66,9 +70,17 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
     options.add_argument("--log-level=3")
     
     # Stability arguments optimized for Windows session persistence
-    options.add_argument("--start-maximized")
+    if os.environ.get("HEADLESS") != "true":
+        options.add_argument("--start-maximized")
     options.add_argument("--disable-popup-blocking")
-    options.page_load_strategy = 'eager'
+    options.page_load_strategy = 'normal'
+    
+    if os.environ.get("HEADLESS") == "true":
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     # IMPORTANT: Do NOT use --incognito or --disable-session-crashed-bubble
     # as they prevent session persistence
@@ -98,6 +110,8 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
     
     try:
         driver = webdriver.Chrome(options=options)
+        if on_driver_created:
+            on_driver_created(driver)
         # Bring Chrome window to the foreground on Windows
         try:
             driver.maximize_window()
@@ -171,7 +185,7 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
     return driver
 
 
-def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on_finished=None):
+def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on_finished=None, on_driver_created=None):
     print("\n[Email] Initializing Gmail browser...")
     options = webdriver.ChromeOptions()
     
@@ -179,13 +193,17 @@ def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on
     os.makedirs(user_data_dir, exist_ok=True)
     
     # --- FIX 1: Remove stale Chrome SingletonLock that blocks reuse ---
-    singleton_lock = os.path.join(user_data_dir, "Default", "SingletonLock")
-    if os.path.exists(singleton_lock):
-        try:
-            os.remove(singleton_lock)
-            print("[Email] Removed stale Chrome profile lock.")
-        except Exception as e:
-            print(f"[Email] Warning: Could not remove profile lock: {e}")
+    locks = [
+        os.path.join(user_data_dir, "SingletonLock"),
+        os.path.join(user_data_dir, "Default", "SingletonLock")
+    ]
+    for lock_path in locks:
+        if os.path.lexists(lock_path):
+            try:
+                os.remove(lock_path)
+                print(f"[Email] Removed stale Chrome profile lock: {lock_path}")
+            except Exception as e:
+                print(f"[Email] Warning: Could not remove profile lock {lock_path}: {e}")
     
     # Use proper path formatting to avoid ERR_INVALID_ARGUMENT on Windows
     user_data_dir = os.path.abspath(user_data_dir).replace("\\", "/")
@@ -203,10 +221,16 @@ def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on
     options.add_argument("--log-level=3")
     
     # Stability arguments for Windows
-    options.add_argument("--start-maximized")
+    if os.environ.get("HEADLESS") != "true":
+        options.add_argument("--start-maximized")
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    
+    if os.environ.get("HEADLESS") == "true":
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     # --- FIX 2: Set page load strategy correctly via capability ---
     options.set_capability("pageLoadStrategy", "eager")
@@ -221,6 +245,8 @@ def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on
     
     try:
         driver = webdriver.Chrome(options=options)
+        if on_driver_created:
+            on_driver_created(driver)
         # Bring Chrome window to the foreground on Windows
         try:
             driver.maximize_window()
@@ -366,16 +392,8 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
                 on_finished=on_finished_whatsapp
             )
             
-    if use_email:
-        if gmail_driver is not None and actions.is_browser_alive(gmail_driver):
-            print("✅ [Email] Reusing existing active browser session...")
-        else:
-            gmail_driver = init_gmail_driver(
-                cancel_check=cancel_check,
-                confirm_check=confirm_check_gmail,
-                on_waiting=on_waiting_gmail,
-                on_finished=on_finished_gmail
-            )
+    # SMTP is used for emails, no Selenium browser launch needed for email!
+    pass
                 
     whatsapp_success = 0
     email_success = 0
@@ -438,25 +456,25 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
                     whatsapp_success += 1
                     
         if use_email:
-            if not actions.is_browser_alive(gmail_driver):
-                print("❌ [Email] Browser window was closed! Stopping email operations.")
-                use_email = False
-                continue
-                
             if not email:
                 print("⚠️  [Email] No email address found, skipping...")
             else:
-                send_start = time.time()
-                if actions.send_email_via_browser(gmail_driver, email, name, ml_optimizer, analytics, cancel_check=cancel_check, username=username):
-                    email_success += 1
-                    send_duration = time.time() - send_start
-                    if ml_optimizer:
-                        ml_optimizer.record_send_attempt(True, send_duration)
-                    if analytics and email_success % 5 == 0:
-                        analytics.print_dashboard()
+                import verify_emails
+                ver = verify_emails.verify_single_email(email)
+                if not ver['valid']:
+                    print(f"⚠️  [Email] Skipping invalid email {email} (Reason: {ver['reason']})")
                 else:
-                    if ml_optimizer:
-                        ml_optimizer.record_send_attempt(False)
+                    send_start = time.time()
+                    if actions.send_email_via_smtp(email, name, ml_optimizer, analytics, cancel_check=cancel_check, username=username):
+                        email_success += 1
+                        send_duration = time.time() - send_start
+                        if ml_optimizer:
+                            ml_optimizer.record_send_attempt(True, send_duration)
+                        if analytics and email_success % 5 == 0:
+                            analytics.print_dashboard()
+                    else:
+                        if ml_optimizer:
+                            ml_optimizer.record_send_attempt(False)
                         
     print("\n============================================================\n   MESSAGING COMPLETED\n============================================================\n")
     if use_whatsapp:

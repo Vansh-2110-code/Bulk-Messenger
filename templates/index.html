@@ -225,6 +225,13 @@
                         <i class="fa-solid fa-magnifying-glass"></i>
                         <input type="text" id="contacts-search" class="form-control contacts-search-input" placeholder="Search by name, phone or email...">
                     </div>
+                    <div class="contacts-filter-wrap" style="flex: 0 0 180px;">
+                        <select id="contacts-email-filter" class="form-control" style="cursor: pointer; height: 42px; padding: 10px 14px; font-weight: 500;">
+                            <option value="all">🔍 All Emails</option>
+                            <option value="valid">🟢 Valid Emails Only</option>
+                            <option value="invalid">🔴 Invalid Emails Only</option>
+                        </select>
+                    </div>
                     <div class="contacts-actions">
                         <button class="btn btn-primary" id="btn-add-contact" title="Add contact manually">
                             <i class="fa-solid fa-user-plus"></i> Add Contact
@@ -234,6 +241,9 @@
                         </button>
                         <button class="btn btn-secondary" id="btn-export-contacts" title="Export contacts list to Excel">
                             <i class="fa-solid fa-file-export"></i> Export Excel
+                        </button>
+                        <button class="btn btn-secondary" id="btn-verify-contacts" title="Verify all emails in the list" style="background: var(--dark); color: #fff; border: none; font-weight: 500; cursor: pointer;">
+                            <i class="fa-solid fa-envelope-circle-check"></i> Verify Emails
                         </button>
                         <span class="contacts-count-badge" id="contacts-count-badge">0 contacts</span>
                     </div>
@@ -299,6 +309,67 @@
                                         <i class="fa-solid fa-right-to-bracket"></i> Launch Gmail Chrome
                                     </button>
                                     <span class="session-status offline" id="session-status-gm">Disconnected</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Remote Browser Interactive Control Panel -->
+                        <div id="remote-browser-container" style="display: none; margin-top: 25px; border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 25px;">
+                            <h3 style="margin-bottom: 15px; font-size: 1.2rem; color: var(--text-dark); display: flex; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-desktop" style="color: var(--primary);"></i> 
+                                Remote Server Browser View (<span id="remote-browser-title" style="color: var(--primary); font-weight: 600;">Service</span>)
+                            </h3>
+                            <p class="description" style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted);">
+                                Below is the live screen of the browser running on the server. Click directly on the image to simulate a click, and use the panel on the right to type text or send keyboard commands.
+                            </p>
+                            
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                                <!-- Live Screen -->
+                                <div style="position: relative; border: 1px solid rgba(0,0,0,0.15); border-radius: 8px; overflow: hidden; background: #000; box-shadow: var(--shadow-sm); display: inline-block; max-width: 100%;">
+                                    <img id="remote-browser-screenshot" src="" alt="Remote Browser Live Screen" style="display: block; max-width: 100%; width: 680px; height: auto; cursor: crosshair; background: #111;" />
+                                    
+                                    <!-- Spinner -->
+                                    <div id="remote-browser-spinner" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; color: #fff; gap: 10px; font-weight: 500; transition: opacity 0.2s;">
+                                        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem;"></i> Loading...
+                                    </div>
+                                </div>
+                                
+                                <!-- Interaction panel -->
+                                <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 18px;">
+                                    <div style="background: rgba(0,0,0,0.02); padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05);">
+                                        <label style="font-weight: 600; display: block; margin-bottom: 8px; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Go to URL (Address Bar)</label>
+                                        <div style="display: flex; gap: 8px;">
+                                            <input type="text" id="remote-browser-url" placeholder="https://..." style="flex: 1; padding: 10px 12px; border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; font-size: 0.9rem;" />
+                                            <button id="btn-remote-navigate" class="btn btn-primary" style="padding: 10px 16px; border-radius: 6px; background: #555; border-color: #555;">Go</button>
+                                        </div>
+                                        <div style="margin-top: 8px; font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap;">
+                                            <span>Quick Links:</span>
+                                            <a href="#" class="quick-url-link" data-url="https://stackoverflow.com/users/login" style="color: var(--primary); text-decoration: underline;">StackOverflow (Bypass)</a> | 
+                                            <a href="#" class="quick-url-link" data-url="https://mail.google.com" style="color: var(--primary); text-decoration: underline;">Gmail</a>
+                                        </div>
+                                    </div>
+
+                                    <div style="background: rgba(0,0,0,0.02); padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05);">
+                                        <label style="font-weight: 600; display: block; margin-bottom: 8px; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Type Text</label>
+                                        <div style="display: flex; gap: 8px;">
+                                            <input type="text" id="remote-browser-text" placeholder="Enter text to type..." style="flex: 1; padding: 10px 12px; border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; font-size: 0.9rem;" />
+                                            <button id="btn-remote-send-text" class="btn btn-primary" style="padding: 10px 16px; border-radius: 6px;">Type Text</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="background: rgba(0,0,0,0.02); padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.05);">
+                                        <label style="font-weight: 600; display: block; margin-bottom: 8px; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Keyboard Shortcuts</label>
+                                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                            <button id="btn-remote-key-enter" class="btn" style="background: var(--light); color: var(--dark); border: 1px solid rgba(0,0,0,0.12); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem;"><i class="fa-solid fa-keyboard" style="margin-right: 4px;"></i> Enter</button>
+                                            <button id="btn-remote-key-tab" class="btn" style="background: var(--light); color: var(--dark); border: 1px solid rgba(0,0,0,0.12); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem;"><i class="fa-solid fa-right-long" style="margin-right: 4px;"></i> Tab</button>
+                                            <button id="btn-remote-key-backspace" class="btn" style="background: var(--light); color: var(--dark); border: 1px solid rgba(0,0,0,0.12); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem;"><i class="fa-solid fa-delete-left" style="margin-right: 4px;"></i> Backspace</button>
+                                            <button id="btn-remote-key-escape" class="btn" style="background: var(--light); color: var(--dark); border: 1px solid rgba(0,0,0,0.12); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem;">Esc</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <button id="btn-remote-refresh" class="btn" style="background: #fff; color: var(--text-dark); border: 1px solid rgba(0,0,0,0.15); padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; box-shadow: var(--shadow-sm);"><i class="fa-solid fa-arrows-rotate"></i> Refresh Screen</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -427,6 +498,17 @@
                                         <input type="email" id="gmail-sender-id" class="form-control" placeholder="e.g. name@gmail.com">
                                     </div>
                                 </div>
+                                <div class="form-row">
+                                    <div class="form-group col-12">
+                                        <label for="gmail-app-password">Your Gmail App Password</label>
+                                        <input type="password" id="gmail-app-password" class="form-control" placeholder="16-character Google App Password (e.g. abcd efgh ijkl mnop)">
+                                        <p class="help-text" style="margin-top: 5px; font-size: 0.8rem; color: var(--text-muted);">Required for background email delivery. Generate this in your <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--primary); text-decoration: underline; font-weight: 500;">Google Account Security Settings</a>.</p>
+                                        <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+                                            <button type="button" id="btn-verify-email" class="btn" style="background: var(--dark); color: #fff; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none;"><i class="fa-solid fa-plug-circle-check"></i> Verify Email Connection</button>
+                                            <span id="verify-email-status" style="font-size: 0.85rem; font-weight: 500;"></span>
+                                        </div>
+                                    </div>
+                                </div>
                                 
                                 <div class="form-group">
                                     <div class="toggle-control">
@@ -507,9 +589,14 @@
                             <h2><i class="fa-solid fa-clock-rotate-left" style="color:var(--accent-purple); margin-right: 8px;"></i>Sent Email Tracking History</h2>
                             <p style="color: #94a3b8; font-size: 0.9rem; margin-top: 4px;">Track which logged-in account has sent which email</p>
                         </div>
-                        <button class="btn btn-secondary" id="btn-refresh-history">
-                            <i class="fa-solid fa-rotate"></i> Refresh History
-                        </button>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" id="btn-refresh-history">
+                                <i class="fa-solid fa-rotate"></i> Refresh History
+                            </button>
+                            <button class="btn btn-primary" id="btn-export-history" title="Export sent emails tracking history to Excel" style="background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue)); border: none; font-weight: 500; cursor: pointer;">
+                                <i class="fa-solid fa-file-export"></i> Export Excel
+                            </button>
+                        </div>
                     </div>
                     <div class="table-container" style="overflow-x: auto;">
                         <table class="data-table" style="width: 100%; border-collapse: collapse;">
