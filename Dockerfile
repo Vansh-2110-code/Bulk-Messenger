@@ -35,6 +35,7 @@ EXPOSE 5000
 # Set environment variables
 ENV PORT=5000
 ENV PYTHONUNBUFFERED=1
+ENV HEADLESS=true
 
 # Command to run the application
 CMD ["python", "app.py"]
