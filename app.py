@@ -99,7 +99,9 @@ state = {
     }
 }
 
-lock = threading.Lock()
+# Use RLock for application state so re-entrant calls never deadlock
+lock = threading.RLock()
+log_lock = threading.Lock()
 
 # Custom stdout capture class
 class StdoutRedirector:
@@ -110,8 +112,8 @@ class StdoutRedirector:
         self.original_stdout.write(message)
         if message.strip():
             timestamp = datetime.now().strftime("%H:%M:%S")
-            # Thread-safe log append
-            with lock:
+            # Thread-safe log append using separate lock to prevent state deadlocks
+            with log_lock:
                 state['logs'].append(f"[{timestamp}] {message.strip()}")
                 # Keep logs bounded
                 if len(state['logs']) > 1000:
@@ -150,18 +152,26 @@ def run_sender_thread(choice):
     use_whatsapp = choice in ['1', '3']
     use_email = choice in ['2', '3']
     
+    # Check browser health outside the lock
+    wa_drv = None
+    gm_drv = None
+    with lock:
+        wa_drv = state['whatsapp_driver']
+        gm_drv = state['gmail_driver']
+
+    if use_whatsapp and wa_drv and not actions.is_browser_alive(wa_drv):
+        wa_drv = None
+        
+    if use_email and gm_drv and not actions.is_browser_alive(gm_drv):
+        gm_drv = None
+
     with lock:
         state['is_sending'] = True
         state['cancel_flag'] = False
         state['progress']['status'] = 'sending'
         state['progress']['current'] = 0
-        
-        # Preserve existing active drivers for session reuse
-        if use_whatsapp and state['whatsapp_driver'] and not actions.is_browser_alive(state['whatsapp_driver']):
-            state['whatsapp_driver'] = None
-            
-        if use_email and state['gmail_driver'] and not actions.is_browser_alive(state['gmail_driver']):
-            state['gmail_driver'] = None
+        state['whatsapp_driver'] = wa_drv
+        state['gmail_driver'] = gm_drv
         
     print(f"🎬 Starting background sender process (Mode: {choice})...")
     

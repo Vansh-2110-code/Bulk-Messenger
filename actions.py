@@ -108,8 +108,7 @@ def is_browser_alive(driver):
     try:
         _ = driver.current_url
         return True
-    except Exception as e:
-        print(f"DEBUG: is_browser_alive exception: {e}")
+    except Exception:
         return False
 
 

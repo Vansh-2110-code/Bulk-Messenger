@@ -69,21 +69,24 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
     # Suppress console errors (like net error -2)
     options.add_argument("--log-level=3")
     
-    # Stability arguments optimized for Windows session persistence
-    if os.environ.get("HEADLESS") != "true":
-        options.add_argument("--start-maximized")
-    options.add_argument("--disable-popup-blocking")
-    options.page_load_strategy = 'normal'
+    is_headless = os.environ.get("HEADLESS") == "true" or (sys.platform.startswith("linux") and not os.environ.get("DISPLAY"))
     
-    if os.environ.get("HEADLESS") == "true":
-        options.add_argument("--headless")
+    if sys.platform.startswith("linux"):
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
+        
+    if is_headless:
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    # IMPORTANT: Do NOT use --incognito or --disable-session-crashed-bubble
-    # as they prevent session persistence
+    else:
+        options.add_argument("--start-maximized")
+    options.add_argument("--disable-popup-blocking")
+    options.page_load_strategy = 'normal'
     
     # Add preferences to ensure session persistence
     prefs = {
@@ -112,19 +115,25 @@ def init_whatsapp_driver(cancel_check=None, confirm_check=None, on_waiting=None,
         driver = webdriver.Chrome(options=options)
         if on_driver_created:
             on_driver_created(driver)
-        # Bring Chrome window to the foreground on Windows
-        try:
-            driver.maximize_window()
-        except:
-            pass
-        try:
-            import ctypes
-            hwnd = ctypes.windll.user32.FindWindowW(None, driver.title)
-            if hwnd:
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        except:
-            pass
+        if is_headless:
+            try:
+                driver.set_window_size(1920, 1080)
+            except Exception:
+                pass
+        else:
+            try:
+                driver.maximize_window()
+            except Exception:
+                pass
+            if sys.platform == 'win32':
+                try:
+                    import ctypes
+                    hwnd = ctypes.windll.user32.FindWindowW(None, driver.title)
+                    if hwnd:
+                        ctypes.windll.user32.SetForegroundWindow(hwnd)
+                        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                except Exception:
+                    pass
     except Exception as e:
         print(f"❌ [WhatsApp] Failed to start Chrome: {str(e)}")
         print("   💡 Try clearing the chrome_profiles folder and run again.")
@@ -220,17 +229,23 @@ def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on
     # Suppress console errors
     options.add_argument("--log-level=3")
     
-    # Stability arguments for Windows
-    if os.environ.get("HEADLESS") != "true":
+    is_headless = os.environ.get("HEADLESS") == "true" or (sys.platform.startswith("linux") and not os.environ.get("DISPLAY"))
+    
+    if sys.platform.startswith("linux"):
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        
+    if is_headless:
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    else:
         options.add_argument("--start-maximized")
     options.add_argument("--disable-popup-blocking")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    
-    if os.environ.get("HEADLESS") == "true":
-        options.add_argument("--headless")
-        options.add_argument("--disable-gpu")
-        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     # --- FIX 2: Set page load strategy correctly via capability ---
     options.set_capability("pageLoadStrategy", "eager")
@@ -247,19 +262,25 @@ def init_gmail_driver(cancel_check=None, confirm_check=None, on_waiting=None, on
         driver = webdriver.Chrome(options=options)
         if on_driver_created:
             on_driver_created(driver)
-        # Bring Chrome window to the foreground on Windows
-        try:
-            driver.maximize_window()
-        except:
-            pass
-        try:
-            import ctypes
-            hwnd = ctypes.windll.user32.FindWindowW(None, driver.title)
-            if hwnd:
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        except:
-            pass
+        if is_headless:
+            try:
+                driver.set_window_size(1920, 1080)
+            except Exception:
+                pass
+        else:
+            try:
+                driver.maximize_window()
+            except Exception:
+                pass
+            if sys.platform == 'win32':
+                try:
+                    import ctypes
+                    hwnd = ctypes.windll.user32.FindWindowW(None, driver.title)
+                    if hwnd:
+                        ctypes.windll.user32.SetForegroundWindow(hwnd)
+                        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                except Exception:
+                    pass
     except Exception as e:
         print(f"❌ [Email] Failed to start Chrome: {str(e)}")
         print("   💡 Try clearing the chrome_profiles/gmail folder and run again.")

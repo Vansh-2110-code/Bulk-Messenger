@@ -156,11 +156,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // --- SAFE FETCH HELPER ---
+    const safeFetchJson = async (url, options = {}) => {
+        const response = await fetch(url, options);
+        const contentType = response.headers.get('content-type') || '';
+        
+        let data = null;
+        if (contentType.includes('application/json')) {
+            try {
+                data = await response.json();
+            } catch (err) {
+                throw new Error(`Invalid JSON returned from server: ${err.message}`);
+            }
+        } else {
+            if (!response.ok) {
+                if (response.status === 504) {
+                    throw new Error('Server timeout (504 Gateway Time-out): Backend Python process took too long or is deadlocked. Please check server logs or restart the service.');
+                } else if (response.status === 502) {
+                    throw new Error('Server unavailable (502 Bad Gateway): The Flask backend process is not running or crashed.');
+                } else if (response.status === 413) {
+                    throw new Error('File too large (413 Request Entity Too Large): File exceeds server maximum upload limit.');
+                } else if (response.status === 401) {
+                    throw new Error('Authentication required. Please refresh and log in.');
+                }
+                throw new Error(`Server returned HTTP ${response.status} (${response.statusText || 'Error'})`);
+            }
+            throw new Error('Server returned an unexpected non-JSON response.');
+        }
+
+        if (!response.ok) {
+            const errorMsg = (data && data.error) ? data.error : `HTTP ${response.status}: ${response.statusText}`;
+            throw new Error(errorMsg);
+        }
+
+        return data;
+    };
+
     // --- POLLING CONTROLLER ---
     // Fetch Status details from API
     const fetchStatus = async () => {
         try {
             const response = await fetch('/api/status');
+            if (!response.ok) return;
             const data = await response.json();
 
             isSendingState = data.is_sending;
@@ -715,8 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const origHTML = buttonElem.innerHTML;
             buttonElem.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Launching Chrome...';
 
-            const response = await fetch(`/api/login/${service}`, { method: 'POST' });
-            const result = await response.json();
+            const result = await safeFetchJson(`/api/login/${service}`, { method: 'POST' });
 
             if (result.success) {
                 alert(`Chrome launched successfully for ${service}! Scroll down to the 'Remote Server Browser View' to complete your login.`);
@@ -727,8 +763,9 @@ document.addEventListener('DOMContentLoaded', () => {
             buttonElem.disabled = false;
             buttonElem.innerHTML = origHTML;
         } catch (error) {
-            alert(`Network error launching Chrome: ${error.message}`);
+            alert(`Error launching Chrome: ${error.message}`);
             buttonElem.disabled = false;
+            buttonElem.innerHTML = service === 'whatsapp' ? '<i class="fa-solid fa-qrcode"></i> Launch WhatsApp Chrome' : '<i class="fa-solid fa-envelope"></i> Launch Gmail Chrome';
         }
     };
 
@@ -832,11 +869,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const url = type === 'contacts' ? '/api/upload/contacts' : '/api/upload/attachment';
-            const response = await fetch(url, {
+            const result = await safeFetchJson(url, {
                 method: 'POST',
                 body: formData
             });
-            const result = await response.json();
 
             if (result.success) {
                 if (type === 'contacts') {
@@ -854,7 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(`Upload Failed: ${result.error}`);
             }
         } catch (error) {
-            alert(`Network error uploading file: ${error.message}`);
+            alert(`Error uploading file: ${error.message}`);
         } finally {
             dropZone.innerHTML = origHTML;
         }
