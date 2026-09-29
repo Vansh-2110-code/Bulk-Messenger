@@ -486,7 +486,7 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
                     print(f"⚠️  [Email] Skipping invalid email {email} (Reason: {ver['reason']})")
                 else:
                     send_start = time.time()
-                    if actions.send_email_via_smtp(email, name, ml_optimizer, analytics, cancel_check=cancel_check, username=username):
+                    if actions.send_email_via_smtp(email, name, ml_optimizer, analytics, cancel_check=cancel_check, username=username, gmail_driver=gmail_driver):
                         email_success += 1
                         send_duration = time.time() - send_start
                         if ml_optimizer:

@@ -464,6 +464,205 @@ def send_whatsapp_message(driver, phone, name, ml_optimizer=None, cancel_check=N
 
 
 
+def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cancel_check=None, username=None, gmail_driver=None):
+    def a_sleep(secs):
+        if cancel_check and cancel_check():
+            raise CancelledException("Cancellation requested.")
+        import time as _time
+        slept = 0.0
+        delay = ml_optimizer.get_action_delay(secs) if (ml_optimizer and hasattr(ml_optimizer, 'get_action_delay')) else secs
+        while slept < delay:
+            if cancel_check and cancel_check():
+                raise CancelledException("Cancellation requested.")
+            _time.sleep(0.2)
+            slept += 0.2
+
+    start_time = time.time()
+
+    sender_email = ''
+    app_password = ''
+    try:
+        if os.path.exists('config.json'):
+            with open('config.json', 'r') as f:
+                c = json.load(f)
+                sender_email = c.get('gmail_sender', '').strip()
+                app_password = c.get('gmail_app_password', '').strip()
+    except Exception as e:
+        print(f"⚠️  [Email] Error reading config: {e}")
+
+    # Fallback to environment variables if present
+    sender_email = sender_email or os.environ.get('GMAIL_SENDER', '').strip()
+    app_password = app_password or os.environ.get('GMAIL_APP_PASSWORD', '').strip()
+
+    subject_text = get_email_subject(name)
+
+    # If SMTP credentials are missing, check if browser fallback is possible
+    if not sender_email or not app_password:
+        if gmail_driver is not None and is_browser_alive(gmail_driver):
+            print(f"   ℹ️  [Email] SMTP credentials not set, falling back to active browser session...")
+            return send_email_via_browser(gmail_driver, to_email, name, ml_optimizer, analytics, cancel_check=cancel_check, username=username)
+
+        err_msg = "Gmail Sender ID or App Password is not configured! Please configure them in Settings."
+        print(f"❌ [Email] {err_msg}")
+        print(f"   💡 Tip: Go to Settings tab, enter your Gmail ID & 16-character Google App Password, and click Save.")
+
+        db_manager.record_sent_email(
+            username=username or 'system',
+            sender_email=sender_email or 'not_configured',
+            recipient_name=name,
+            recipient_email=to_email,
+            subject=subject_text,
+            status='failed',
+            error_message=err_msg
+        )
+
+        if analytics:
+            analytics.record_send({
+                'name': name,
+                'email': to_email,
+                'success': False,
+                'time_taken': 0,
+                'error': err_msg
+            })
+
+        return False
+
+    try:
+        if cancel_check and cancel_check():
+            raise CancelledException("Cancellation requested.")
+
+        print(f"[Email] Preparing email via Gmail SMTP for {name} ({to_email})...")
+
+        if ml_optimizer:
+            engagement = ml_optimizer.get_engagement_prediction(to_email, name)
+            print(f"   🎯 Engagement prediction: {engagement['probability']*100:.0f}% ({engagement['confidence']})")
+
+        body_text = get_email_body_text(name)
+        active_cc_list = get_email_cc()
+
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.base import MIMEBase
+        from email import encoders
+        import email.utils
+        import mimetypes
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = to_email
+        msg['Subject'] = subject_text
+        msg['Date'] = email.utils.formatdate(localtime=True)
+
+        recipients = [to_email]
+        if active_cc_list:
+            msg['Cc'] = ', '.join(active_cc_list)
+            recipients.extend(active_cc_list)
+
+        msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+        # Attachments
+        valid_brochures = get_valid_brochures()
+        if valid_brochures:
+            for brochure_path in valid_brochures:
+                if os.path.exists(brochure_path):
+                    file_size_mb = os.path.getsize(brochure_path) / (1024 * 1024)
+                    if file_size_mb > 25:
+                        print(f"   💡 Skipping attachment {os.path.basename(brochure_path)} (size: {file_size_mb:.1f}MB exceeds 25MB limit)")
+                        continue
+                    try:
+                        ctype, encoding = mimetypes.guess_type(brochure_path)
+                        if ctype is None or encoding is not None:
+                            ctype = 'application/octet-stream'
+                        maintype, subtype = ctype.split('/', 1)
+                        with open(brochure_path, 'rb') as fp:
+                            part = MIMEBase(maintype, subtype)
+                            part.set_payload(fp.read())
+                        encoders.encode_base64(part)
+                        filename = os.path.basename(brochure_path)
+                        part.add_header('Content-Disposition', 'attachment', filename=filename)
+                        msg.attach(part)
+                        print(f"   ✅ Attached: {filename}")
+                    except Exception as att_err:
+                        print(f"   ⚠️  Could not attach {os.path.basename(brochure_path)}: {att_err}")
+
+        # Send via Gmail SMTP
+        clean_password = app_password.replace(" ", "")
+        print(f"   🚀 Sending via smtp.gmail.com:587...")
+
+        if cancel_check and cancel_check():
+            raise CancelledException("Cancellation requested.")
+
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
+        server.starttls()
+        server.login(sender_email, clean_password)
+        server.sendmail(sender_email, recipients, msg.as_string())
+        server.quit()
+
+        time_taken = time.time() - start_time
+        print(f"✅ [Email] Message sent to {name} ({to_email})! (took {time_taken:.1f}s)")
+
+        db_manager.record_sent_email(
+            username=username or 'system',
+            sender_email=sender_email,
+            recipient_name=name,
+            recipient_email=to_email,
+            subject=subject_text,
+            status='success'
+        )
+
+        if analytics and ml_optimizer:
+            analytics.record_send({
+                'name': name,
+                'email': to_email,
+                'success': True,
+                'time_taken': time_taken,
+                'wait_time': 0,
+                'priority_score': getattr(ml_optimizer.contact_prioritizer.score_contact(to_email, name), '__float__', lambda: 0)(),
+                'engagement_prediction': ml_optimizer.get_engagement_prediction(to_email, name)['probability']
+            })
+        elif analytics:
+            analytics.record_send({
+                'name': name,
+                'email': to_email,
+                'success': True,
+                'time_taken': time_taken,
+                'wait_time': 0
+            })
+
+        a_sleep(1)
+        return True
+
+    except CancelledException:
+        print("🛑 [Email] Sending process cancelled during email execution.")
+        return False
+    except Exception as e:
+        time_taken = time.time() - start_time
+        print(f"❌ [Email] Error sending to {name} ({to_email}): {str(e)}")
+
+        db_manager.record_sent_email(
+            username=username or 'system',
+            sender_email=sender_email,
+            recipient_name=name,
+            recipient_email=to_email,
+            subject=subject_text,
+            status='failed',
+            error_message=str(e)
+        )
+
+        if analytics:
+            analytics.record_send({
+                'name': name,
+                'email': to_email,
+                'success': False,
+                'time_taken': time_taken,
+                'error': str(e)
+            })
+
+        return False
+
+
+
 def send_email_via_browser(driver, to_email, name, ml_optimizer=None, analytics=None, cancel_check=None, username=None):
     def a_sleep(secs):
         if cancel_check and cancel_check():
