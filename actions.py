@@ -464,6 +464,95 @@ def send_whatsapp_message(driver, phone, name, ml_optimizer=None, cancel_check=N
 
 
 
+def get_smtp_connection(sender_email, app_password, cancel_check=None):
+    """
+    Get or create a reusable, authenticated SMTP connection.
+    Attempts Port 465 (Direct SSL) first for maximum cloud/VPS compatibility,
+    falling back to Port 587 (STARTTLS).
+    """
+    import sys
+    import smtplib
+    import ssl
+    import socket
+
+    if not hasattr(sys, '_bulk_smtp_session'):
+        sys._bulk_smtp_session = {'server': None, 'sender': None, 'port': None}
+
+    cached = sys._bulk_smtp_session
+    server = cached.get('server')
+    clean_password = app_password.replace(" ", "")
+
+    # Check if existing connection is still healthy
+    if server is not None and cached.get('sender') == sender_email:
+        try:
+            status = server.noop()
+            if status[0] == 250:
+                return server
+        except Exception:
+            # Stale connection, close and clean up
+            try:
+                server.quit()
+            except Exception:
+                try:
+                    server.close()
+                except Exception:
+                    pass
+            sys._bulk_smtp_session['server'] = None
+
+    # Try Port 465 (Direct SSL) first, then Port 587 (STARTTLS)
+    ports = [465, 587]
+    last_err = None
+
+    for port in ports:
+        if cancel_check and cancel_check():
+            raise CancelledException("Cancellation requested.")
+
+        new_server = None
+        try:
+            print(f"   🔌 Establishing SMTP connection via smtp.gmail.com:{port}...")
+            if port == 465:
+                ssl_context = ssl.create_default_context()
+                new_server = smtplib.SMTP_SSL('smtp.gmail.com', 465, context=ssl_context, timeout=12)
+            else:
+                new_server = smtplib.SMTP('smtp.gmail.com', 587, timeout=12)
+                new_server.ehlo()
+                new_server.starttls()
+                new_server.ehlo()
+
+            new_server.login(sender_email, clean_password)
+            sys._bulk_smtp_session = {
+                'server': new_server,
+                'sender': sender_email,
+                'port': port
+            }
+            print(f"   ✅ Established stable SMTP session via smtp.gmail.com:{port}")
+            return new_server
+        except Exception as e:
+            last_err = e
+            print(f"   ⚠️  Failed to connect on port {port}: {e}")
+            if new_server:
+                try:
+                    new_server.close()
+                except Exception:
+                    pass
+
+    raise last_err or Exception("Could not connect to Gmail SMTP on port 465 or 587")
+
+
+def close_smtp_session():
+    """Cleanly close any active SMTP session."""
+    import sys
+    if hasattr(sys, '_bulk_smtp_session') and sys._bulk_smtp_session.get('server'):
+        try:
+            sys._bulk_smtp_session['server'].quit()
+        except Exception:
+            try:
+                sys._bulk_smtp_session['server'].close()
+            except Exception:
+                pass
+        sys._bulk_smtp_session = {'server': None, 'sender': None, 'port': None}
+
+
 def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cancel_check=None, username=None, gmail_driver=None):
     def a_sleep(secs):
         if cancel_check and cancel_check():
@@ -586,18 +675,44 @@ def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cance
                     except Exception as att_err:
                         print(f"   ⚠️  Could not attach {os.path.basename(brochure_path)}: {att_err}")
 
-        # Send via Gmail SMTP
-        clean_password = app_password.replace(" ", "")
-        print(f"   🚀 Sending via smtp.gmail.com:587...")
+        # Send via persistent/resilient Gmail SMTP session
+        import socket
+        import ssl
 
-        if cancel_check and cancel_check():
-            raise CancelledException("Cancellation requested.")
+        max_retries = 3
+        sent_successfully = False
+        last_exception = None
 
-        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=30)
-        server.starttls()
-        server.login(sender_email, clean_password)
-        server.sendmail(sender_email, recipients, msg.as_string())
-        server.quit()
+        for attempt in range(1, max_retries + 1):
+            if cancel_check and cancel_check():
+                raise CancelledException("Cancellation requested.")
+
+            try:
+                server = get_smtp_connection(sender_email, app_password, cancel_check=cancel_check)
+                print(f"   🚀 Sending email to {name} (attempt {attempt}/{max_retries})...")
+                server.sendmail(sender_email, recipients, msg.as_string())
+                sent_successfully = True
+                print(f"   📨 Message sent successfully via Gmail SMTP!")
+                break
+            except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, socket.error, TimeoutError, OSError) as conn_err:
+                last_exception = conn_err
+                print(f"   ⚠️  [Email] Connection interrupted ({conn_err}). Resetting connection...")
+                # Reset cached connection so next attempt establishes fresh connection
+                close_smtp_session()
+                if attempt < max_retries:
+                    retry_wait = attempt * 2  # 2s, 4s
+                    print(f"   ⏳ Pausing {retry_wait}s before reconnecting...")
+                    a_sleep(retry_wait)
+            except Exception as other_err:
+                last_exception = other_err
+                print(f"   ⚠️  [Email] Error sending email: {other_err}")
+                break
+
+        if not sent_successfully:
+            if last_exception:
+                raise last_exception
+            else:
+                raise Exception("Failed to send email via SMTP after retries.")
 
         time_taken = time.time() - start_time
         print(f"✅ [Email] Message sent to {name} ({to_email})! (took {time_taken:.1f}s)")
@@ -630,7 +745,25 @@ def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cance
                 'wait_time': 0
             })
 
-        a_sleep(1)
+        # Adaptive pacing delay between emails to prevent Gmail anti-spam connection throttling
+        pace_delay = 4.0
+        if ml_optimizer and hasattr(ml_optimizer, 'get_optimal_wait_time'):
+            try:
+                pace_delay = ml_optimizer.get_optimal_wait_time()
+            except Exception:
+                pace_delay = 4.0
+        else:
+            try:
+                if os.path.exists('config.json'):
+                    with open('config.json', 'r') as f:
+                        cfg = json.load(f)
+                        pace_delay = float(cfg.get('min_wait_seconds', 4.0))
+            except Exception:
+                pace_delay = 4.0
+
+        pace_delay = max(3.0, min(pace_delay, 30.0))
+        print(f"   ⏳ Pacing: Waiting {pace_delay:.1f}s before next contact to keep SMTP connection stable...")
+        a_sleep(pace_delay)
         return True
 
     except CancelledException:
@@ -658,6 +791,11 @@ def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cance
                 'time_taken': time_taken,
                 'error': str(e)
             })
+
+        try:
+            a_sleep(3.0)
+        except Exception:
+            pass
 
         return False
 

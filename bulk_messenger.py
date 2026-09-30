@@ -497,6 +497,7 @@ def run_sending_process(choice, whatsapp_driver, gmail_driver, progress_callback
                         if ml_optimizer:
                             ml_optimizer.record_send_attempt(False)
                         
+    actions.close_smtp_session()
     print("\n============================================================\n   MESSAGING COMPLETED\n============================================================\n")
     if use_whatsapp:
         print(f"✅ WhatsApp: {whatsapp_success}/{total_contacts} messages sent successfully")

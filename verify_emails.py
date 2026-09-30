@@ -18,13 +18,7 @@ def verify_email_domain(email):
     
     domain = email.strip().split('@')[1]
     
-    try:
-        # Check if the domain is resolvable
-        socket.gethostbyname(domain)
-    except socket.gaierror:
-        return False, f"Domain '{domain}' is not resolvable / does not exist"
-        
-    # Standard lookup using a public DNS over HTTPS API (100% native and reliable inside Docker)
+    # 1. Primary lookup using public DNS over HTTPS API (100% native and reliable inside Docker / VPS)
     try:
         url = f"https://dns.google/resolve?name={domain}&type=MX"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -32,11 +26,30 @@ def verify_email_domain(email):
             data = json.loads(response.read().decode())
             if "Answer" in data and len(data["Answer"]) > 0:
                 return True, "Domain and MX records verified"
-    except Exception as e:
-        # Fallback: if DNS API is blocked, assume domain resolvability is enough
+            # If no MX records, check if domain has an A record
+            if data.get("Status") == 0:
+                return True, "Domain resolved successfully"
+    except Exception:
         pass
-        
-    return True, "Domain resolved successfully"
+
+    # 2. Fallback to native socket lookup
+    try:
+        socket.gethostbyname(domain)
+        return True, "Domain resolved successfully"
+    except socket.gaierror:
+        # 3. Secondary check with Google DNS A record in case local DNS is broken
+        try:
+            url = f"https://dns.google/resolve?name={domain}&type=A"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                if "Answer" in data and len(data["Answer"]) > 0:
+                    return True, "Domain resolved via DNS over HTTPS"
+        except Exception:
+            pass
+        return False, f"Domain '{domain}' is not resolvable / does not exist"
+    except Exception:
+        return True, "Domain resolution assumed valid"
 
 def verify_single_email(email):
     """Perform syntax and domain verification on a single email."""

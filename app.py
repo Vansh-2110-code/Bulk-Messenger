@@ -743,10 +743,21 @@ def verify_email_connection():
             return jsonify({'error': 'Gmail ID or App Password is not provided'}), 400
             
         import smtplib
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender_email, app_password)
-        server.quit()
+        clean_password = app_password.replace(" ", "")
+        server = smtplib.SMTP('smtp.gmail.com', 587, timeout=15)
+        try:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(sender_email, clean_password)
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                try:
+                    server.close()
+                except Exception:
+                    pass
         
         return jsonify({'success': 'Email connection verified successfully!'})
     except Exception as e:
