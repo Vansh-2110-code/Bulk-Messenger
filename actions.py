@@ -464,7 +464,7 @@ def send_whatsapp_message(driver, phone, name, ml_optimizer=None, cancel_check=N
 
 
 
-def get_smtp_connection(sender_email, app_password, cancel_check=None):
+def get_smtp_connection(sender_email, app_password, cancel_check=None, force_port=None):
     """
     Get or create a reusable, authenticated SMTP connection.
     Attempts Port 465 (Direct SSL) first for maximum cloud/VPS compatibility,
@@ -481,6 +481,15 @@ def get_smtp_connection(sender_email, app_password, cancel_check=None):
     cached = sys._bulk_smtp_session
     server = cached.get('server')
     clean_password = app_password.replace(" ", "")
+
+    # If force_port is requested and doesn't match current connection, close and reset
+    if force_port and cached.get('port') != force_port and server is not None:
+        try:
+            server.close()
+        except Exception:
+            pass
+        sys._bulk_smtp_session = {'server': None, 'sender': None, 'port': None}
+        server = None
 
     # Check if existing connection is still healthy
     if server is not None and cached.get('sender') == sender_email:
@@ -499,8 +508,8 @@ def get_smtp_connection(sender_email, app_password, cancel_check=None):
                     pass
             sys._bulk_smtp_session['server'] = None
 
-    # Try Port 465 (Direct SSL) first, then Port 587 (STARTTLS)
-    ports = [465, 587]
+    # Determine ports to try
+    ports = [force_port] if force_port else [465, 587]
     last_err = None
 
     for port in ports:
@@ -512,9 +521,9 @@ def get_smtp_connection(sender_email, app_password, cancel_check=None):
             print(f"   🔌 Establishing SMTP connection via smtp.gmail.com:{port}...")
             if port == 465:
                 ssl_context = ssl.create_default_context()
-                new_server = smtplib.SMTP_SSL('smtp.gmail.com', 465, context=ssl_context, timeout=12)
+                new_server = smtplib.SMTP_SSL('smtp.gmail.com', 465, context=ssl_context, timeout=20)
             else:
-                new_server = smtplib.SMTP('smtp.gmail.com', 587, timeout=12)
+                new_server = smtplib.SMTP('smtp.gmail.com', 587, timeout=20)
                 new_server.ehlo()
                 new_server.starttls()
                 new_server.ehlo()
@@ -536,7 +545,7 @@ def get_smtp_connection(sender_email, app_password, cancel_check=None):
                 except Exception:
                     pass
 
-    raise last_err or Exception("Could not connect to Gmail SMTP on port 465 or 587")
+    raise last_err or Exception(f"Could not connect to Gmail SMTP on port(s) {ports}")
 
 
 def close_smtp_session():
@@ -655,9 +664,11 @@ def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cance
         if valid_brochures:
             for brochure_path in valid_brochures:
                 if os.path.exists(brochure_path):
-                    file_size_mb = os.path.getsize(brochure_path) / (1024 * 1024)
-                    if file_size_mb > 25:
-                        print(f"   💡 Skipping attachment {os.path.basename(brochure_path)} (size: {file_size_mb:.1f}MB exceeds 25MB limit)")
+                    file_size_bytes = os.path.getsize(brochure_path)
+                    file_size_mb = file_size_bytes / (1024 * 1024)
+                    filename = os.path.basename(brochure_path)
+                    if file_size_mb > 19.0:
+                        print(f"   ⚠️  Skipping attachment {filename} ({file_size_mb:.1f} MB exceeds Gmail 25MB total limit after base64 encoding)")
                         continue
                     try:
                         ctype, encoding = mimetypes.guess_type(brochure_path)
@@ -668,12 +679,11 @@ def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cance
                             part = MIMEBase(maintype, subtype)
                             part.set_payload(fp.read())
                         encoders.encode_base64(part)
-                        filename = os.path.basename(brochure_path)
                         part.add_header('Content-Disposition', 'attachment', filename=filename)
                         msg.attach(part)
-                        print(f"   ✅ Attached: {filename}")
+                        print(f"   ✅ Attached: {filename} ({file_size_mb:.2f} MB)")
                     except Exception as att_err:
-                        print(f"   ⚠️  Could not attach {os.path.basename(brochure_path)}: {att_err}")
+                        print(f"   ⚠️  Could not attach {filename}: {att_err}")
 
         # Send via persistent/resilient Gmail SMTP session
         import socket
@@ -687,21 +697,28 @@ def send_email_via_smtp(to_email, name, ml_optimizer=None, analytics=None, cance
             if cancel_check and cancel_check():
                 raise CancelledException("Cancellation requested.")
 
+            # Alternate ports across attempts: Attempt 1: 465, Attempt 2: 587, Attempt 3: 465
+            target_port = 587 if attempt == 2 else 465
             try:
-                server = get_smtp_connection(sender_email, app_password, cancel_check=cancel_check)
-                print(f"   🚀 Sending email to {name} (attempt {attempt}/{max_retries})...")
-                server.sendmail(sender_email, recipients, msg.as_string())
+                server = get_smtp_connection(sender_email, app_password, cancel_check=cancel_check, force_port=target_port)
+                # Set generous socket timeout for transmitting data and attachments
+                if server and getattr(server, 'sock', None):
+                    server.sock.settimeout(120)
+
+                print(f"   🚀 Sending email to {name} via port {target_port} (attempt {attempt}/{max_retries})...")
+                send_start = time.time()
+                server.send_message(msg, from_addr=sender_email, to_addrs=recipients)
                 sent_successfully = True
-                print(f"   📨 Message sent successfully via Gmail SMTP!")
+                print(f"   📨 Message sent successfully via Gmail SMTP! (transfer took {time.time() - send_start:.1f}s)")
                 break
             except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError, socket.error, TimeoutError, OSError) as conn_err:
                 last_exception = conn_err
-                print(f"   ⚠️  [Email] Connection interrupted ({conn_err}). Resetting connection...")
-                # Reset cached connection so next attempt establishes fresh connection
+                err_detail = f"{type(conn_err).__name__}: {str(conn_err)}"
+                print(f"   ⚠️  [Email] Connection interrupted on port {target_port} ({err_detail}). Resetting connection...")
                 close_smtp_session()
                 if attempt < max_retries:
                     retry_wait = attempt * 2  # 2s, 4s
-                    print(f"   ⏳ Pausing {retry_wait}s before reconnecting...")
+                    print(f"   ⏳ Pausing {retry_wait}s before reconnecting on alternative port...")
                     a_sleep(retry_wait)
             except Exception as other_err:
                 last_exception = other_err
